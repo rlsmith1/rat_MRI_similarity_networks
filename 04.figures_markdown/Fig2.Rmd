@@ -1,0 +1,518 @@
+---
+title: "Figure 2: The normative rat cortical connectome is associated with neurobiological features"
+author: "Rachel Smith"
+output: pdf_document
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(fig.width = 2.5, fig.height = 2, collapse = TRUE, warning = FALSE, message = FALSE, echo = FALSE)
+
+## Set paths and load data
+base_dir <- "~/Documents/PhD/projects/CamRat/CamRat/"
+source(paste0(base_dir, "scripts/03.data_analysis/setup.R"))
+figures_dir <- paste0(base_dir, "outputs/figures/Fig2/")
+tables_dir <- paste0(base_dir, "outputs/tables/")
+analysis_objects_dir <- paste0(base_dir, "outputs/objects/Fig2/") # to save analysis objects for figures
+
+## Load data objects for Fig 2 benchmarking plots
+objects <- list.files(analysis_objects_dir)
+objects <- objects[!str_detect(objects, "null|archive")]
+for (obj in objects){
+  print(paste0("loading ", obj, "...."))
+  load(paste0(analysis_objects_dir, obj))
+}
+```
+
+### A | Adult normative cortical microstructural network heatmap
+
+```{r Fig2a.table}
+df_normative_mind %>%  
+  mutate(R1 = factor(R1, levels = roi_order),
+         R2 = factor(R2, levels = roi_order)
+  ) %>% 
+  arrange(R1, R2) %>% 
+  pivot_wider(id_cols = R1, names_from = R2, values_from = median_weight) %>% 
+  
+  write_xlsx(path = paste0(tables_dir, "TableS2.normative_MTR_MIND.xlsx"))
+```
+
+```{r Fig2a.plot}
+fig2a <- df_normative_mind %>%  
+  mutate(R1 = factor(R1, levels = roi_order),
+         R2 = factor(R2, levels = roi_order)
+  ) %>% 
+  mutate(median_weight = ifelse(R1 == R2, NA, median_weight)) %>% #pull(R1) %>% unique
+  
+  # plot
+  ggplot(aes(x = R1, y = R2, fill = median_weight)) +
+  geom_tile() +
+  
+  # add module colors as side bars
+  
+  # right
+  annotate(ymin = c(-Inf, system_lines),
+           ymax = c(system_lines, length(roi_order) + 0.5),
+           xmin = length(roi_order) + 1.25, xmax = length(roi_order) + 2.5,
+           geom = "rect",
+           fill = system_colors) +
+  # top
+  annotate(xmin = c(0.5, system_lines),
+           xmax = c(system_lines, length(roi_order) + 0.5),
+           ymin = length(roi_order) + 1.25, ymax = length(roi_order) + 2.75,
+           geom = "rect",
+           fill = system_colors) +
+  
+  # # label systems
+  # annotate(geom = "text", x = length(roi_order) + 3, y = system_annotations,
+  #          label = names(system_annotations), hjust = 0, vjust = 0.25, size = 3
+  # ) +
+  
+  # plot aesthetics
+  #coord_cartesian(xlim = c(0, length(roi_order) + 15), clip = "off") +
+  coord_fixed() +
+  labs(x = NULL, y = NULL, title = "A | Normative adult cortical microstructural network") +
+  scale_fill_viridis(option = "viridis", na.value = "white") +
+  guides(fill = guide_colourbar(title.position = "left", title.hjust = 0.5, title = "edge weight (w)")) +
+  theme(axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        axis.line = element_blank(), 
+        legend.position = "left",
+        legend.justification = "left",
+        legend.title = element_text(angle = 90, size = 8),
+        legend.text = element_text(size = 8),
+        legend.key.height = unit(1.5, "cm"),
+        legend.key.width = unit(0.2, "cm"),
+        legend.margin = margin(r = -18)
+  )
+```
+
+```{r fig2a.save, fig.width = 4.75, fig.height = 4, eval = FALSE}
+fig2a
+map(
+  .x = c(".png", ".pdf"),
+  .f = ~ ggsave(paste0(figures_dir, "A.normative_network_heatmap", .x), width = 4.75, height = 4)
+)
+```
+
+### LEGEND (system level) ###
+
+```{r legend, fig.height = 4, fig.width = 2.75, eval = FALSE}
+legend_color_names <- str_remove(names(system_colors), " cortex| formation| region")
+legend_colors <- system_colors
+names(legend_colors) <- legend_color_names
+system_legend <- (
+  system_colors %>% 
+    enframe("system", "color") %>% 
+    mutate(system = str_remove(names(system_colors), " cortex| formation| region") %>% 
+             factor(levels = str_remove(system_order, " cortex| formation| region") %>% rev)
+    ) %>% 
+    ggplot(aes(x = system, y = color)) +
+    geom_point(aes(fill = system), shape = 21) +
+    guides(fill = guide_legend(title = NULL, ncol = 1, override.aes = list(size = 4))) +
+    scale_fill_manual(values = legend_colors) +
+    theme(legend.margin = margin(t = 0, r = 0, b = 0, l = 0))
+) %>%
+  get_legend()
+as.ggplot(system_legend)
+map(
+  .x = c(".png", ".pdf"),
+  .f = ~ ggsave(paste0(figures_dir, "../system_legend", .x), width = 2.75, height = 4)
+)
+```
+
+
+### B & C (left) | Anatomical distribution of cortical systems; anatomy of nodal degree
+
+```{r Fig2bc.prep}
+## Rotate coordinates by 90 degrees (to plot upright)
+rotate_90 <- function(geometry) {
+  rotation_matrix <- matrix(c(0, 1, -1, 0), ncol = 2)  # 90-degree counterclockwise rotation
+  st_geometry(geometry) <- st_geometry(geometry) * rotation_matrix
+  return(geometry)
+}
+df_flatmap_rot <- rotate_90(df_flatmap)
+
+## Add system hierarchy and degree
+df_fig2bc <- df_flatmap_rot %>% 
+  left_join(df_normative_degree) %>% 
+  filter(!is.na(Swanson_name))
+
+## Split into right and left hemispheres (for categorical and continuous plotting)df_fig2b
+df_fig2bc_left <- df_fig2bc %>% 
+  filter(hemisphere == "Left") %>% 
+  left_join(enframe(system_colors, name = "system", value = "fill")) %>% 
+  mutate(color = ifelse(is.na(region_of_interest), "gray", "black"))
+df_fig2bc_right <- df_fig2bc %>% 
+  filter(hemisphere == "Right")
+```
+
+```{r Fig2bc.plot}
+fig2bc <- ggplot(mapping = aes(geometry = geometry)) +
+  
+  # System colors in L
+  geom_sf(data = df_fig2bc_left, aes(fill = I(fill), color = I(color))) +
+  
+  # Degree in R
+  geom_sf(data = df_fig2bc_right, aes(fill = median_degree, color = median_degree)) +
+  scale_fill_viridis(na.value = "white") +
+  scale_color_viridis(na.value = "gray",  guide = "none") +
+  guides(fill = guide_colorbar(title = "Degree", title.position = "left", title.hjust = 0.5)) +
+  
+  labs(x = NULL, y = NULL, title = "B | Cortical system") +
+  theme(
+    legend.position = "none",
+    #legend.title = element_text(angle = 90),
+    #legend.key.height = unit(0.75, "cm"),
+    #legend.key.width = unit(0.2, "cm"),
+    #legend.margin = margin(l = -20),
+    axis.line = element_blank(),
+    axis.text = element_blank(),
+    axis.ticks = element_blank()
+  )
+```
+
+```{r Fig2bc.save, fig.height = 2.5, fig.width = 3.5}
+fig2bc
+map(
+  .x = c(".png", ".pdf"),
+  .f = ~ ggsave(paste0(figures_dir, "BC.flatmap_system_degree", .x), width = 3.5, height = 2.5)
+)
+```
+
+### C | Adult normative cortical connectome nodal strength distribution
+
+```{r Fig2c.table}
+df_normative_degree %>%  
+  dplyr::select(region_of_interest, median_degree) %>%
+  dplyr::rename("degree" = "median_degree") %>% 
+  
+  write_xlsx(path = paste0(tables_dir, "TableS3.normative_MIND_degree.xlsx"))
+```
+
+```{r Fig2c.prep}
+## Identify non-cortical ROIs
+na_rois <- df_whs_atlas %>% 
+  anti_join(df_normative_degree) %>% 
+  pull(region_of_interest) %>%
+  unique
+
+## Set layer order for brain plot based on normative strength
+fig2c_roi_order <- df_normative_degree %>% pull(region_of_interest)
+
+## Combine atlas and degree data for plotting
+df_fig2c <- df_whs_atlas %>% 
+  
+  # select plane for plotting
+  filter(plane == "sagittal" & hemisphere == "right") %>% 
+  dplyr::select(-plane) %>% 
+  unnest(cols = c(value)) %>% 
+  
+  # add strength data
+  left_join(df_normative_degree) %>% 
+
+  # arrange ROIs for plot
+  mutate(region_of_interest = factor(region_of_interest, levels = c(na_rois, fig2c_roi_order)))
+
+## Label hubs
+df_fig2c_labs <- df_centroids %>% 
+  filter(region_of_interest %in% hubs & hemisphere == "right") %>% 
+  left_join(df_abbreviations)
+```
+
+```{r Fig2c.plot}
+fig2c <- ggplot() +
+  geom_polygon(data = df_fig2c,
+               mapping = aes(x = x, y = y, group = region_of_interest, fill = median_degree, color = median_degree), 
+               alpha = 0.95, lwd = 0.5) +
+  geom_text_repel(data = df_fig2c_labs,
+                  mapping = aes(x = y, y = z, label = abbreviation), 
+                  min.segment.length = 0, box.padding = 1, max.overlaps = 100, size = 3
+  ) +
+  scale_fill_viridis(na.value = "lightgray") +
+  scale_color_viridis(na.value = "lightgray", guide = "none") +
+  guides(fill = guide_colorbar(title = "Strength (s)", title.position = "top", title.hjust = 0.5)) +
+  theme_void() +
+  theme(legend.position = "top",
+        legend.key.height = unit(0.15, "cm"),
+        legend.key.width = unit(1, "cm"),
+        legend.text = element_text(size = 7),
+        legend.title = element_text(size = 8),
+        strip.text = element_blank()
+  )
+```
+
+```{r Fig2c.save, fig.width = 2.75, fig.height = 2, eval = FALSE}
+fig2c
+map(
+  .x = c(".png", ".pdf"),
+  .f = ~ ggsave(paste0(figures_dir, "C.normative_degree_brain", .x), width = 2.75, height = fig_height)
+)
+```
+
+### D | Edge-distance relationship
+
+```{r Fig2d.prep}
+pearsons_r <- cor(df_normative_mind_distance$median_weight, df_normative_mind_distance$distance)
+linear_model <- lm(median_weight ~ distance, data = df_normative_mind_distance) %>% summary
+r2 <- linear_model$adj.r.squared
+```
+
+```{r Fig2d.plot}
+fig2d <- df_normative_mind_distance %>% 
+  ggplot(aes(x = distance, y = median_weight)) +
+  geom_point(size = 0.5) +
+  geom_smooth(method = "lm", color = "maroon", linewidth = 0.5) +
+  annotate(geom = "text", x = 295, y = 0.98, size = 3.5, color = "maroon",
+           label = paste0("r = ", round(pearsons_r, 2))) +
+  scale_fill_viridis() +
+  coord_cartesian(clip = "off") +
+  labs(x = "Distance between nodes", y = "Edge weight (w)",
+       title = "D | Distance by weight"
+       #title = "Linear relationship between normative MIND edge weight and distance"
+  ) +
+  theme(
+    legend.position = "none",
+    axis.text = element_text(size = 7),
+    axis.title = element_text(size = 8)
+  )
+```
+
+```{r Fig2d.save, fig.width = 1.625, fig.height = 1.3, eval = FALSE}
+fig2d
+map(
+  .x = c(".png", ".pdf"),
+  .f = ~ ggsave(paste0(figures_dir, "D.edge_distance_relationship", .x), width = small_fig_width, height = small_fig_height)
+)
+```
+
+### E | Cortical type: Intra-class edge proportion across network density thresholds
+
+```{r Fig2e.plot}
+df_intraclass_overlap <- df_intraclass_overlap %>% mutate(color = ifelse(color != "gray", "maroon", color))
+fig2e <- ggplot(mapping = aes(x = density, y = percent_edge*100)) +
+  #geom_point(aes(fill = I(color)), shape = 21) +
+  geom_line(data = df_intraclass_overlap %>% filter(network == "normative MIND"), linewidth = 0.75,
+            mapping = aes(group = network, color = I(color))
+  ) +
+  geom_smooth(data = df_intraclass_overlap %>% filter(network != "normative MIND"),
+              mapping = aes(color = I(color)), se = TRUE
+  ) +
+  annotate(geom = "text", label = "Normative network", color = "maroon", x = 0.05, y = 100, size = 3.5) +
+  annotate(geom = "text", label = "10000 null nets", color = "#595959", x = 0.06, y = 25, size = 3.5) +
+  
+  scale_x_continuous(breaks = c(0, 0.05, 0.1)) +
+  ylim(c(0, 100)) +
+  coord_cartesian(clip = "off") +
+  labs(x = "Network density", y = "Intra-class edge %",
+       title = "E | Intra-class similarity") +
+  theme(
+    plot.margin = margin(r = 5),    
+    axis.text = element_text(size = 7),
+    axis.title = element_text(size = 8)
+  )
+```
+
+```{r Fig2e.save, fig.width = 1.625, fig.height = 1.3, eval = FALSE}
+fig2e
+map(
+  .x = c(".png", ".pdf"),
+  .f = ~ ggsave(paste0(figures_dir, "E.cortical_type_intraclass_overlap", .x), width = small_fig_width, height = small_fig_height)
+)
+```
+
+### F | Tract-tracing: Jaccard index correlation (+ perm distribution)
+
+```{r Fig2f.null}
+fig2f.null <- df_jaccard_mind_null %>% 
+  filter(str_detect(network, "null")) %>% 
+
+  ggplot(aes(x = rho)) +
+  geom_density(trim = FALSE) +
+  geom_vline(
+    data = df_jaccard_mind_null %>% filter(!str_detect(network, "null")),
+    aes(xintercept = rho), color = "darkgrey"
+  ) +
+  geom_point(
+    data = df_jaccard_mind_null %>% filter(!str_detect(network, "null")),
+    aes(x = rho, y = 0, fill = zscore), size = 3, shape = 21, fill = "maroon"
+  ) +
+  # annotate(geom = "text", label = expression(~rho), size = 4,
+  #          x = 0.26, y = -0.8, color = "maroon") +
+  scale_fill_gradient2(low = "midnightblue", mid = "white", high = "maroon", guide = "none") +
+  coord_cartesian(clip = "off") +
+  labs(x = "", y = "") +
+  theme_cowplot() +
+  theme(axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        axis.line.y = element_blank(),
+        plot.margin = margin(t = 0, r = 0, b = 0, l = 0)
+  )
+```
+
+```{r Fig2f.plot}
+fig2f.cor <- df_jaccard_mind %>% 
+  ggplot(aes(x = jaccard, y = mind_weight)) +
+  geom_point(size = 0.5) +
+  geom_smooth(method = "lm", color = "maroon", linewidth = 0.5) +
+  stat_cor(method = "spearman", cor.coef.name = "rho", p.digits = NA, label.y = 0.625, label.x = 0.5,
+           label.sep = "\n", hjust = 0, size = 3.5, color = "maroon") +
+  coord_cartesian(clip = "off") +
+  labs(x = "Tract-tracing Jaccard index", y = "Edge weight (w)",
+       title = "F | Tract-tracing similarity") +
+  theme(
+    legend.position = "none",
+    axis.text = element_text(size = 7),
+    axis.title = element_text(size = 8)
+    
+  )
+#fig2f_inset_grob <- ggplotGrob(fig2g.null + plot_annotation(tag_levels = NULL))
+#fig2f <- fig2f.cor + annotation_custom(grob = fig2f_inset_grob, xmin = 0.45, xmax = 0.9, ymin = 0.55, ymax = 0.8)
+```
+
+```{r Fig2f.stat}
+cor.test(df_jaccard_mind$jaccard, df_jaccard_mind$mind_weight, method = "spearman")
+```
+
+```{r Fig2f.save, fig.width = 1.625, fig.height = 1.3, eval = FALSE}
+#fig2f
+fig2f.cor
+map(
+  .x = c(".png", ".pdf"),
+  .f = ~ ggsave(paste0(figures_dir, "F.tract_tracing_jaccard_correlation", .x), width = small_fig_width, height = small_fig_height)
+)
+```
+
+### G | Side-by-side comparison of network heatmaps
+
+```{r Fig2g.plot}
+fig2g <- df_norm_exp_mind %>%  
+  pivot_longer(5:6, names_to = "cohort") %>% 
+  mutate(cohort = ifelse(
+    str_detect(cohort, "norm"), 
+    "Normative PND63 (N=41)", 
+    "Control PND63 (N=19)") %>% 
+      factor(levels = c("Normative PND63 (N=41)", "Control PND63 (N=19)"))
+  ) %>% 
+  
+  # define row & column order
+  mutate(R1 = factor(R1, levels = roi_order),
+         R2 = factor(R2, levels = roi_order)
+  ) %>% 
+  mutate(value = ifelse(R1 == R2, NA, value)) %>% #pull(R1) %>% unique
+  
+  # plot
+  ggplot(aes(x = R1, y = R2, fill = value)) +
+  geom_tile() +
+  facet_wrap(vars(cohort), nrow = 1) +
+  
+  # plot aesthetics
+  #coord_cartesian(xlim = c(0, length(roi_order_noOB) + 15), clip = "off") +
+  coord_fixed() +
+  labs(x = NULL, y = NULL, title = "G | Median PND 63 network by cohort") +
+  scale_fill_viridis(na.value = "white") +
+  guides(fill = guide_colourbar(title.position = "left", title.hjust = 0.5, title.vjust = 0, title = "edge weight (w)")) +
+  theme(axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        axis.line = element_blank(), 
+        legend.title = element_text(angle = 90, size = 8),
+        legend.key.width = unit(0.15, "cm"),
+        legend.key.height = unit(0.5, "cm"),
+        legend.margin = margin(l = -15),
+        strip.background = element_rect(fill = "white", color = "white"),
+        strip.clip = "off",
+        strip.text = element_text(size = 7.5),
+        plot.title = element_text(margin = margin(b = 0))
+  )
+```
+
+```{r Fig2g.stats}
+## Generate adjacency matrices for both networks
+norm_net <- df_norm_exp_mind %>% 
+  arrange(R1, R2) %>% 
+  pivot_wider(id_cols = R1, names_from = R2, values_from = norm_weight) %>% 
+  mutate_all( ~ replace_na(.x, 0)) %>% 
+  column_to_rownames("R1")
+exp_net <- df_norm_exp_mind %>% 
+  arrange(R1, R2) %>% 
+  pivot_wider(id_cols = R1, names_from = R2, values_from = exp_weight) %>%
+  mutate_all( ~ replace_na(.x, 0)) %>% 
+  column_to_rownames("R1")
+  
+# Convert adjacency matrices to distance matrices
+# Perform hierarchical clustering
+# Compute cophenetic distance matrices
+norm_coph <- hclust(as.dist(1 - norm_net), method = "average") %>% cophenetic
+exp_coph <- hclust(as.dist(1 - exp_net), method = "average") %>% cophenetic
+
+## Calculate cophenetic correlation coefficient between two networks
+cor(norm_coph, exp_coph)
+
+## Calculate Pearson correlation between two matrices
+cor.test(as.dist(1 - norm_net), as.dist(1 - exp_net), method = "pearson")
+```
+
+```{r Fig2g.save, fig.width = 3.15, fig.height = 1.3}
+fig2g
+map(
+  .x = c(".png", ".pdf"),
+  .f = ~ ggsave(paste0(figures_dir, "G.normative_stress_heatmaps", .x), width = 3.15, height = small_fig_height)
+)
+```
+
+### H | Scatterplot correlation of edge weights & edge weight distributions
+
+```{r Fig2h.plot}
+fig2h <- df_norm_exp_mind %>% 
+  ggplot(aes(x = norm_weight, y = exp_weight)) +
+  geom_point(size = 0.5) +
+  geom_smooth(method = "lm", color = "maroon", linewidth = 0.5, se = FALSE) +
+  stat_cor(aes(label = ..r.label..), vjust = 1, color = "maroon", size = 3.5) +
+  labs(x = "Normative PND63 (N=41)", y = "Control PND63 (N=19)",
+       title = "H | Weight correlation") +
+  theme(
+    axis.text = element_text(size = 7),
+    axis.title = element_text(size = 8)
+  )
+```
+
+```{r Fig2h.stats}
+wilcox.test(df_norm_exp_mind$exp_weight, df_norm_exp_mind$norm_weight)
+cor.test(df_norm_exp_mind$exp_weight, df_norm_exp_mind$norm_weight)
+```
+
+```{r Fig2h.save, fig.width = 1.625, fig.height = 1.3}
+fig2h
+map(
+  .x = c(".png", ".pdf"),
+  .f = ~ ggsave(paste0(figures_dir, "H.edge_weight_cor", .x), width = small_fig_width, height = small_fig_height)
+)
+```
+
+### I | Correlation of strength distributions
+
+```{r Fig2i.plot}
+fig2i <- df_norm_exp_strength %>%  
+  ggplot(aes(x = norm_strength, y = exp_strength)) +
+  geom_point(size = 0.5) +
+  geom_smooth(method = "lm", color = "maroon", linewidth = 0.5, se = FALSE) +
+  stat_cor(aes(label = ..r.label..), vjust = 1, color = "maroon", size = 3.5) +
+  labs(x = "Normative PND63 (N=41)", y = "Control PND63 (N=19)",
+       title = "I | Strength correlation") +
+  theme(
+    axis.text = element_text(size = 7),
+    axis.title = element_text(size = 8)
+  )
+```
+
+```{r Fig2i.stats}
+wilcox.test(df_norm_exp_strength$exp_strength, df_norm_exp_strength$norm_strength)
+cor.test(df_norm_exp_strength$exp_strength, df_norm_exp_strength$norm_strength)
+```
+
+```{r Fig2i.save, fig.width = 1.625, fig.height = 1.3}
+fig2i
+map(
+  .x = c(".png", ".pdf"),
+  .f = ~ ggsave(paste0(figures_dir, "I.degree_cor", .x), width = small_fig_width, height = small_fig_height)
+)
+```

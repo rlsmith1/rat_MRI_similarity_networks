@@ -1,0 +1,32 @@
+
+####################################################################################
+##
+## Generate null networks considering weight bins for subsequent validation analyses
+##
+####################################################################################
+
+## NOTE: Run after edge_distance.R, because we use distance bins for permutations to preserve network structure
+
+## Load distance data for permutation bins
+base_dir <- "~/Documents/PhD/projects/CamRat/CamRat/"
+analysis_objects_dir <- paste0(base_dir, "scripts/final/figures/objects/Fig2/")
+load(paste0(analysis_objects_dir, "03June2024_normative_mind_distance.RDS"))
+
+## Generate 10000 null networks to compare validation results against
+set.seed(16052024)
+df_null_nets <- df_normative_mind_distance %>% 
+  dplyr::select(-edge, -fill) %>% 
+  expand_grid(network = paste0("null", 1:10000)) %>% 
+  group_by(network, distance_bin) %>% 
+  nest() %>% 
+  mutate(
+    data = map(
+      .x = data,
+      .f = ~ .x %>% mutate(weight = sample(median_weight)) %>% dplyr::select(-sd_weight, -z_score, -median_weight)
+    )
+  ) %>% 
+  unnest(cols = c(data)) %>% 
+  arrange(network, distance_bin)
+
+## Save for benchmarking scripts
+save(df_null_nets, file = paste0(analysis_objects_dir, "03June2024_null_nets.RDS"))
