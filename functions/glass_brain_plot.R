@@ -1,7 +1,7 @@
 
 ## Setup 
 base_dir <- "~/Documents/PhD/projects/CamRat/CamRat/"
-source(paste0(base_dir, "scripts/03.data_analysis/setup.R"))
+source(paste0(base_dir, "code/03.data_analysis/setup.R"))
 analysis_objects_dir <- paste0(base_dir, "outputs/objects/Fig2/")
 
 ### GLASS BRAIN NETWORK NODES & EDGES ###
@@ -51,7 +51,7 @@ f_plot_glass_brain <- function(system,
   }
   
   # Define nodes
-  df_nodes <- df_centroids %>% 
+  df_nodes <- df_roi_centers %>% 
     filter(region_of_interest %in% current_regions & hemisphere == "right") %>% 
     left_join(df_system_hierarchy, by = join_by(region_of_interest)) %>% 
     left_join(enframe(system_colors, name = "system", value = "color"), by = join_by(system))

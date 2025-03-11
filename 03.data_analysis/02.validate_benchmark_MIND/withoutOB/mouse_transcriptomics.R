@@ -9,8 +9,8 @@
 ###################################################################################################
 
 base_dir <- "~/Documents/PhD/projects/CamRat/CamRat/"
-source(paste0(base_dir, "scripts/final/data_analysis/setup_noOB.R"))
-analysis_objects_dir <- paste0(base_dir, "scripts/final/figures/objects/Fig2/") # to save analysis objects for figures
+source(paste0(base_dir, "code/03.data_analysis/setup.R"))
+analysis_objects_dir <- paste0(base_dir, "outputs/objects/") # to save analysis objects for figures
 
 
 # Load AMBA data ----------------------------------------------------------
@@ -25,13 +25,13 @@ df_amba_acronyms <- read_xlsx(paste0(data_dir, "AMBA_parcellation_definitions.xl
 df_merfish_expr <- read.csv(paste0(data_dir, "2024Feb28_MERFISH_exp_mat.csv")) %>% as_tibble()
 
 ## AMBA to WHS atlas mappings
-df_bm_to_aba <- read_xlsx(paste0(base_dir, "data/WHS_analysis/BMrat_to_ABAmouse.xlsx"), sheet = 1) %>% 
+df_whs_to_aba <- read_xlsx(paste0(base_dir, "data/WHS_analysis/BMrat_to_ABAmouse.xlsx"), sheet = 1) %>% 
   dplyr::select(-parcellation_division) %>% 
   filter(!is.na(parcellation_structure)) %>% # remove regions not present in ABA data
   distinct() %>%
   
   # include cortical regions and OB regions for now (can remove later, this is for supplement)
-  filter(WHS %in% cortical_ROIs)
+  filter(WHS %in% cortical_ROIs | WHS %in% olfactory_ROIs)
 
 
 ## NOTE: group by ABA except amygdala; endopiriform nucleus, pretectal region; Secondary visual area, lateral part;
@@ -64,7 +64,7 @@ df_merfish_expr_shapiro %>% filter(p_adj > 0.05) # no genes are normally express
 # Calculate expression similarity network using only ROIs in MIND (cortical) ---------------------------------------
 
 ## Filter expression data for regions that are included in MIND
-df_merfish_expr_mind <- df_bm_to_aba %>% 
+df_merfish_expr_mind <- df_whs_to_aba %>% 
   left_join(
     df_merfish_expr %>% 
       dplyr::select(-parcellation_structure),
@@ -92,8 +92,25 @@ df_merfish_cor <- merfish_cor %>%
   pivot_longer(2:ncol(.), names_to = "R2", values_to = "value")
 
 # define ROI order for plot
-merfish_roi_order <- merfish_cor[hclust(dist(merfish_cor))$order,] %>% rownames
-length(merfish_roi_order) # n = 43 (without OB regions)
+# merfish_roi_order <- merfish_cor[hclust(dist(merfish_cor))$order,] %>% rownames
+# length(merfish_roi_order) # n = 43 (without OB regions)
+
+df_hierarchy_merfish <- df_system_hierarchy %>% 
+    left_join(df_whs_to_aba %>% dplyr::select(WHS, parcellation_structure),
+              by = join_by("region_of_interest" == "WHS")
+    )
+merfish_roi_order <- df_hierarchy_merfish %>% 
+    mutate(system = factor(system, levels = system_order)) %>% 
+    arrange(system) %>% 
+    filter(!is.na(parcellation_structure)) %>% 
+    pull(parcellation_structure) %>% 
+    unique
+merfish_roi_order_fullName <- df_amba_acronyms %>% 
+    mutate(acronym = factor(acronym, levels = merfish_roi_order)) %>%
+    filter(!is.na(acronym)) %>% 
+    arrange(acronym) %>% 
+    pull(label)
+
 
 
 # Combine expression similarity network with MIND weights ------------------
@@ -101,12 +118,12 @@ length(merfish_roi_order) # n = 43 (without OB regions)
 df_mind_merfish <- df_normative_mind %>% 
   
   # add ABA labels
-  left_join(df_bm_to_aba %>% 
+  left_join(df_whs_to_aba %>% 
               dplyr::select(-parcellation_substructure) %>% 
               dplyr::rename_at(vars(contains("parcellation")), ~ paste0(.x, 1)), 
             by = join_by("R1" == "WHS")
   ) %>% 
-  left_join(df_bm_to_aba %>% 
+  left_join(df_whs_to_aba %>% 
               dplyr::select(-parcellation_substructure) %>% 
               dplyr::rename_at(vars(contains("parcellation")), ~ paste0(.x, 2)), 
             by = join_by("R2" == "WHS")
@@ -145,12 +162,12 @@ load(paste0(analysis_objects_dir, "03June2024_null_nets.RDS")) # df_null_nets (g
 df_null_nets_mouseTranscriptome <- df_null_nets %>% 
   
   # add ABA labels
-  left_join(df_bm_to_aba %>% 
+  left_join(df_whs_to_aba %>% 
               dplyr::select(-parcellation_substructure) %>% 
               dplyr::rename_at(vars(contains("parcellation")), ~ paste0(.x, 1)), 
             by = join_by("R1" == "WHS")
   ) %>% 
-  left_join(df_bm_to_aba %>% 
+  left_join(df_whs_to_aba %>% 
               dplyr::select(-parcellation_substructure) %>% 
               dplyr::rename_at(vars(contains("parcellation")), ~ paste0(.x, 2)), 
             by = join_by("R2" == "WHS")
@@ -198,6 +215,6 @@ df_null_nets_cor_mind <- df_null_nets_cor %>%
 # Save analysis objects for plotting --------------------------------------
 
 save(
-  df_mind_merfish, df_null_nets_cor_mind,
-  file = paste0(analysis_objects_dir, "08July2024_gene_expression.RData")
+    df_amba_acronyms, df_whs_to_aba, merfish_roi_order, merfish_roi_order_fullName, df_mind_merfish, df_null_nets_cor_mind,
+    file = paste0(analysis_objects_dir, "08July2024_gene_expression.RData")
 )

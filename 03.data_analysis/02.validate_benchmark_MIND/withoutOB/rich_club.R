@@ -7,8 +7,8 @@
 
 ## Set up
 base_dir <- "~/Documents/PhD/projects/CamRat/CamRat/"
-source(paste0(base_dir, "scripts/03.data_analysis/setup.R"))
-analysis_objects_dir <- paste0(base_dir, "outputs/objects/Fig2/") # to save analysis objects for figures
+source(paste0(base_dir, "code/03.data_analysis/setup.R"))
+analysis_objects_dir <- paste0(base_dir, "outputs/objects/")# to save analysis objects for figures
 
 
 ### HOW TO CALCULATE RICH CLUB

@@ -62,7 +62,8 @@ load(paste0(base_dir, "objects/flatmap_df.RData")) # df_flatmap
 #df_hierarchy <- read_excel(paste0(base_dir, "data/WHS_analysis/WHS_hierarchy.xlsx"))
 
 ## Functions
-source(paste0(base_dir, "functions/linear_models.R"))
+source(paste0(base_dir, "code/functions/linear_models.R"))
+#source(paste0(base_dir, "code/functions/glass_brain_plot.R"))
 
 
 # format data -------------------------------------------------------------
@@ -70,6 +71,12 @@ source(paste0(base_dir, "functions/linear_models.R"))
 ## Identify cortical ROIs in MIND analysis
 cortical_ROIs <- df_data_cortex %>% pull(region_of_interest) %>% unique
 length(cortical_ROIs) # n = 53
+
+## Identify olfactory ROIs (for supplemental analyses)
+olfactory_ROIs <- df_mind_cortex_withOB %>% 
+    filter(str_detect(R1, regex("olfactory", ignore_case = TRUE))) %>% 
+    pull(R1) %>% 
+    unique
 
 ## Define system-level groupings for cortical ROIs
 # df_system_hierarchy <- df_hierarchy %>% 
@@ -225,6 +232,18 @@ roi_order <- df_normative_degree %>%
   arrange(system, median_degree) %>%
   pull(region_of_interest) %>% 
   unique
+
+## Define olfactory ROI order (when used)
+olfactory_roi_order <- df_normative_mind_withOB %>% 
+    pivot_wider(id_cols = R1, names_from = R2, values_from = median_weight) %>% 
+    dplyr::select(-R1) %>% 
+    colSums %>% 
+    enframe %>% 
+    dplyr::rename_all( ~ c("region_of_interest", "strength")) %>% 
+    filter(region_of_interest %in% olfactory_ROIs) %>% 
+    arrange(strength) %>% 
+    pull(region_of_interest)
+
 
 ## System colors for plotting
 system_colors <- paletteer::paletteer_d("ggthemes::Tableau_20")[1:length(system_order)] %>% c

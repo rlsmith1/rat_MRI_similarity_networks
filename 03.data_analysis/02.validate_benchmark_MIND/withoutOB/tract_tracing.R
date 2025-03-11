@@ -24,8 +24,9 @@
 # 7 Very strong: The highest possible reported value for a present connection is very strong.
 
 base_dir <- "~/Documents/PhD/projects/CamRat/CamRat/"
-source(paste0(base_dir, "scripts/03.data_analysis/setup.R"))
+source(paste0(base_dir, "code/03.data_analysis/setup.R"))
 tables_dir <- paste0(base_dir, "outputs/tables/")
+analysis_objects_dir <- paste0(base_dir, "outputs/objects/")
 
 
 # Load Swanson-Sporns tract-tracing data -------------------------
@@ -176,7 +177,9 @@ df_swanson_mind_SwansonLabs %>%
   pivot_wider(id_cols = broad_Swanson_name1, names_from = broad_Swanson_name2, values_from = tract_weight) %>% 
   write_xlsx(paste0(tables_dir, "tract_tracing_SwansonLabs.xlsx"))
 
+
 ### break #
+
 
 # Plot heatmaps without binarizing? ---------------------------------------
 
@@ -232,7 +235,7 @@ df_swanson_mind_SwansonLabs_present_connectProb <- df_swanson_mind_SwansonLabs_p
   pivot_longer(c(absent, present), names_to = "swanson_bin", values_to = "frequency")
 
 
-# 3a. Generate Jaccard similarity matrix from exact atlas mappings, and correlate Jaccard with MIND weight for each edge ---------------------
+# 3. Generate Jaccard similarity matrix from exact atlas mappings, and correlate Jaccard with MIND weight for each edge ---------------------
 
 ## Define function to calculate jaccard index
 jaccard <- function(a, b) {
@@ -382,6 +385,10 @@ save(
   Swanson_roi_order, df_swanson_mind_SwansonLabs, df_swanson_mind_SwansonLabs_present_binned, df_swanson_mind_SwansonLabs_present_connectProb, df_jaccard_mind, df_jaccard_mind_null,
   file = paste0(analysis_objects_dir, "03June2024_tract_tracing.RData")
 )
+
+
+
+# Extra plots -------------------------------------------------------------
 
 
 ### REMOVE HIP ###

@@ -6,8 +6,9 @@
 ##############################################################################################################
 
 base_dir <- "~/Documents/PhD/projects/CamRat/CamRat/"
-source(paste0(base_dir, "scripts/03.data_analysis/setup.R"))
+source(paste0(base_dir, "code/03.data_analysis/setup.R"))
 tables_dir <- paste0(base_dir, "outputs/tables/")
+analysis_objects_dir <- paste0(base_dir, "outputs/objects/") 
 
 
 

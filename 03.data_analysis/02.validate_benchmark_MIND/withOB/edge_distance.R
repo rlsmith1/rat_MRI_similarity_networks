@@ -7,8 +7,8 @@
 #################################################################################
 
 base_dir <- "~/Documents/PhD/projects/CamRat/CamRat/"
-source(paste0(base_dir, "scripts/final/data_analysis/setup_noOB.R"))
-analysis_objects_dir <- paste0(base_dir, "scripts/final/figures/objects/Fig2/") # to save analysis objects for figures
+source(paste0(base_dir, "scripts/final/data_analysis/setup.R"))
+analysis_objects_dir <- paste0(base_dir, "outputs/objects/") # to save analysis objects for figures
 
 ## Write function to calculate Euclidean distance between two points
 CalculateEuclideanDistance <- function(vect1, vect2) sqrt(sum((vect1 - vect2)^2))

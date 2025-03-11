@@ -9,7 +9,7 @@
 
 ## Load distance data for permutation bins
 base_dir <- "~/Documents/PhD/projects/CamRat/CamRat/"
-analysis_objects_dir <- paste0(base_dir, "scripts/final/figures/objects/Fig2/")
+analysis_objects_dir <- paste0(base_dir, "outputs/objects/")
 load(paste0(analysis_objects_dir, "08July2024_normative_mind_distance_withOB.RDS")) # df_normative_mind_distance_withOB
 
 ## Generate 10000 null networks to compare validation results against

@@ -9,7 +9,7 @@ knitr::opts_chunk$set(fig.width = 2.5, fig.height = 2, collapse = TRUE, warning 
 
 ## Set paths and load data
 base_dir <- "~/Documents/PhD/projects/CamRat/CamRat/"
-source(paste0(base_dir, "scripts/03.data_analysis/setup.R"))
+source(paste0(base_dir, "code/03.data_analysis/setup.R"))
 supplement_figures_dir <- paste0(base_dir, "outputs/figures/supplement/")
 tables_dir <- paste0(base_dir, "outputs/tables/")
 analysis_objects_dir <- paste0(base_dir, "outputs/objects/Fig2/") # to save analysis objects for figures
@@ -812,7 +812,7 @@ figS13a <- ggplot(mapping = aes(x = age, y = value, fill = value, color = value)
   geom_line(data = df_figS13a, mapping = aes(group = subject),
             linewidth = 0.25) +
   geom_point(data = df_figS13a,
-             shape = 21, size = 1) +
+             shape = 21, size = 1.25, color = "lightgray") +
   
   # median on top
   geom_line(data = df_figS13a_median,
@@ -826,14 +826,14 @@ figS13a <- ggplot(mapping = aes(x = age, y = value, fill = value, color = value)
   scale_fill_viridis(guide = "none") +  
   scale_color_viridis(guide = "none") +
   scale_x_continuous(breaks = c(20, 35, 63, 230)) +
-  labs(y = "MTR", title = "A | Cortical MTR through \ndevelopment by subject")
+  labs(y = "MTR", title = "A | Cortical MTR through development by subject")
 ```
 
-```{r FigS13a.save, fig.height = 2.5, fig.width = 3}
+```{r FigS13a.save, fig.height = 2.5, fig.width = 4.5}
 figS13a
 map(
   .x = c(".png", ".pdf"),
-  .f = ~ ggsave(paste0(supplement_figures_dir, "S13a.development_MTR_by_subj", .x), width = 3, height = 2.5)
+  .f = ~ ggsave(paste0(supplement_figures_dir, "S13a.development_MTR_by_subj", .x), width = 4.5, height = 2.5)
 )
 ```
 

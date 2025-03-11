@@ -8,8 +8,8 @@
 
 ## Set directories & load data
 base_dir <- "~/Documents/PhD/projects/CamRat/CamRat/"
-source(paste0(base_dir, "scripts/03.data_analysis/setup.R"))
-analysis_objects_dir <- paste0(base_dir, "outputs/objects/Fig4/") # to save analysis objects for figures
+source(paste0(base_dir, "code/03.data_analysis/setup.R"))
+analysis_objects_dir <- paste0(base_dir, "outputs/objects/") # to save analysis objects for figures
 
 ## Identify systems that are comprised of only one ROI
 singletons <- df_system_hierarchy %>% 

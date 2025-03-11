@@ -1,7 +1,7 @@
 
 base_dir <- "~/Documents/PhD/projects/CamRat/CamRat/"
-source(paste0(base_dir, "scripts/final/data_analysis/setup_noOB.R"))
-analysis_objects_dir <- paste0(base_dir, "scripts/final/figures/objects/systemsLevel/") # to save analysis objects for figures
+source(paste0(base_dir, "scripts/final/data_analysis/setup.R"))
+analysis_objects_dir <- paste0(base_dir, "outputs/objects/") # to save analysis objects for figures
 figures_dir <- paste0(base_dir, "scripts/final/figures/dualOriginExplore/")
 
 ### Ed's comment on draft:

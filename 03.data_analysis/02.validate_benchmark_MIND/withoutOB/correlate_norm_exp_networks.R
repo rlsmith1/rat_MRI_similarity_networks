@@ -7,8 +7,8 @@
 
 ## Set up
 base_dir <- "~/Documents/PhD/projects/CamRat/CamRat/"
-source(paste0(base_dir, "scripts/final/data_analysis/setup_noOB.R"))
-analysis_objects_dir <- paste0(base_dir, "scripts/final/figures/objects/Fig2/")
+source(paste0(base_dir, "code/03.data_analysis/setup.R"))
+analysis_objects_dir <- paste0(base_dir, "outputs/objects/")
 
 
 # Define the control PND 63 connectome in GSK cohort ----------------------

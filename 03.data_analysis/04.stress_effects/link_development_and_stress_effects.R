@@ -6,19 +6,17 @@
 ### SETUP ###
 
 base_dir <- "~/Documents/PhD/projects/CamRat/CamRat/"
-source(paste0(base_dir, "scripts/03.data_analysis/setup.R"))
-development_analysis_objects_dir <- paste0(base_dir, "outputs/objects/Fig3/")
-stress_analysis_objects_dir <- paste0(base_dir, "outputs/objects/Fig4/")
+source(paste0(base_dir, "code/03.data_analysis/setup.R"))
+analysis_objects_dir <- paste0(base_dir, "outputs/objects/")
 
 ## Load objects from development and stress analyses
-for (dir in c(development_analysis_objects_dir, stress_analysis_objects_dir)) {
-  objects <- list.files(dir)
-  objects <- objects[!str_detect(objects, "null|archive")]
-  for (obj in objects){
-    print(paste0("loading ", obj, "...."))
-    load(paste0(dir, obj))
-  }
+objects <- list.files(analysis_objects_dir)
+objects <- objects[!str_detect(objects, "null|archive")]
+for (obj in objects){
+  print(paste0("loading ", obj, "...."))
+  load(paste0(analysis_objects_dir, obj))
 }
+
 
 
 ### COMBINE EARLY DEVELOPMENT AND STRESS EFFECTS ###
