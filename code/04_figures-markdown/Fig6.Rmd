@@ -1,0 +1,384 @@
+---
+title: "Figure 6: Impact of early life stress on nodal degree & edge weights"
+author: "Rachel Smith"
+output: pdf_document
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(fig.width = 2.5, fig.height = 2, collapse = TRUE, warning = FALSE, message = FALSE, echo = FALSE)
+
+## Set paths and load data
+base_dir <- "~/Documents/PhD/projects/CamRat/CamRat/"
+source(paste0(base_dir, "code/03.data_analysis/setup.R"))
+figures_dir <- paste0(base_dir, "outputs/figures2.0/Fig6/")
+tables_dir <- paste0(base_dir, "outputs/tables/")
+analysis_objects_dir <- paste0(base_dir, "outputs/objects/")
+
+## Load data objects for figures
+objects <- list.files(analysis_objects_dir)
+for (obj in objects){
+  print(paste0("loading ", obj, "...."))
+  load(paste0(analysis_objects_dir, obj))
+}
+```
+
+```{r plot.setup}
+## Identify max and min of effect size color scale based on maximum absolute weight
+roi_scale_max <- df_node_stress_roi_perm %>% 
+  pull(perm_effect_size) %>% 
+  abs %>% 
+  max %>% 
+  ceiling
+
+## Identify max and min of effect size color scale based on maximum absolute weight
+edge_scale_max <- df_edge_stress_system_perm %>% 
+  pull(actual_effect_size) %>% 
+  abs %>% 
+  max %>% 
+  ceiling
+```
+
+
+### A | Anatomical distribution of RMS impact on early adult nodal degree (PND 63 case-control effect sizes)
+
+```{r Fig6a.volumetric.prep}
+## Identify non-cortical ROIs
+na_rois <- df_whs_atlas %>% 
+  anti_join(df_node_stress_roi_perm) %>% 
+  pull(region_of_interest) %>%
+  unique
+
+## Set layer order for brain plot based on normative strength
+fig6a_roi_order <- df_node_stress_roi_perm %>% 
+  filter(feature == "degree") %>% 
+  group_by(region_of_interest) %>% 
+  slice_max(order_by = abs(perm_effect_size), n = 1) %>% 
+  arrange(abs(perm_effect_size)) %>% 
+  pull(region_of_interest) %>% 
+  unique()
+
+## Combine atlas information with ROI weights based on nodal strength slopes
+df_fig6a_volumetric <- df_whs_atlas %>% 
+  
+  # select plane for plotting
+  filter(plane == "sagittal" & hemisphere == "right") %>% 
+  dplyr::select(-plane) %>% 
+  unnest(cols = c(value)) %>% 
+  
+  # add case-control effect size data
+  expand_grid(timepoint = 63) %>% 
+  left_join(df_node_stress_roi_perm %>% 
+              filter(feature == "degree") %>% 
+              dplyr::select(region_of_interest, perm_effect_size)
+  ) %>% 
+
+  # arrange ROIs for plot
+  mutate(region_of_interest = factor(region_of_interest, levels = c(na_rois, fig6a_roi_order)))
+```
+
+```{r Fig6a.volumetric.plot}
+fig6a_volumetric <- df_fig6a_volumetric %>% 
+  ggplot() +
+  geom_polygon(aes(x = x, y = y, group = interaction(region_of_interest, timepoint), fill = perm_effect_size), 
+               alpha = 1, lwd = 0.25) +
+  scale_fill_gradientn(colors = RMS_effect_size_scale, limits = c(-roi_scale_max, roi_scale_max), na.value = "lightgray") +
+  labs(title = "A | Anatomical patterning of RMS strength effects") +
+  guides(fill = guide_colorbar(title = NULL)) +
+  theme_void() +
+  theme(
+    plot.title = element_text(face = "bold", size = 11),
+    legend.position = "none",
+    #legend.direction = "horizontal",
+    #legend.justification = "center",
+    #legend.key.height = unit(.15, "cm"),
+    #legend.key.width = unit(0.75, "cm"),
+    #legend.title = element_text(size = 8),
+    #legend.text = element_text(size = 7)
+  )
+```
+
+```{r Fig6a.flatmap.prep}
+## Rotate coordinates by 180 degrees (want the 'front' facing right to align more with anatomic plots)
+rotate_180 <- function(geometry) {
+  rotation_matrix <- matrix(c(-1, 0, 0, -1), ncol = 2)  # 180-degree counterclockwise rotation
+  st_geometry(geometry) <- st_geometry(geometry) * rotation_matrix
+  return(geometry)
+}
+df_flatmap_rot <- rotate_180(df_flatmap)
+
+## Add developmental slopes
+df_fig6a_flatmap <- df_flatmap_rot %>% 
+  left_join(df_node_stress_roi_perm %>% 
+              filter(feature == "degree") %>% 
+              ungroup %>% 
+              dplyr::select(region_of_interest, perm_effect_size),
+            by = join_by(region_of_interest)
+  ) %>% 
+  filter(!is.na(Swanson_name)) %>% 
+  
+  # filter for early life slope in left hemisphere, and aging slope in right
+  dplyr::filter(hemisphere == "Left")
+```
+
+```{r fig6a.flatmap.plot}
+fig6a_flatmap <- df_fig6a_flatmap %>% 
+  ggplot(mapping = aes(geometry = geometry)) +
+  geom_sf(aes(fill = perm_effect_size, color = perm_effect_size)) +
+  scale_fill_gradientn(colors = RMS_effect_size_scale, 
+                       limits = c(-roi_scale_max, roi_scale_max), 
+                       na.value = "white") +
+  scale_color_gradientn(colors = RMS_effect_size_scale, 
+                        limits = c(-roi_scale_max, roi_scale_max), 
+                        na.value = "gray",
+                        guide = "none") +
+  guides(fill = guide_colorbar(title = NULL)) +
+  
+  labs(x = NULL, y = NULL, title = NULL) +
+  theme(
+    legend.position = "bottom",
+    legend.direction = "horizontal",
+    legend.justification = "center",
+    #legend.title = element_text(angle = 90),
+    legend.key.width = unit(1.0, "cm"),
+    legend.key.height = unit(0.15, "cm"),
+    legend.margin = margin(l = -20),
+    axis.line = element_blank(),
+    axis.text = element_blank(),
+    axis.ticks = element_blank()
+  )
+```
+
+```{r Fig6a.save, fig.width = 4.25, fig.height = 1.8, eval = FALSE}
+layout <- c(
+  patchwork::area(t = 1, b = 180, l = 1, r = 100),
+  patchwork::area(t = 1, b = 180, l = 91, r = 180)
+)
+fig6a_volumetric +
+  fig6a_flatmap +
+  plot_layout(design = layout)
+
+map(
+  .x = c(".png", ".pdf"),
+  .f = ~ ggsave(paste0(figures_dir, "A.RMS_effect_brainmap", .x), width = 4.25, height = 1.8)
+)
+```
+
+
+### B | Significant effects of RMS impact on adult nodal degree (PND 63 case-control)
+
+```{r Fig6b.prep}
+df_fig6b <- df_node_stress_roi %>% 
+  filter(region_of_interest %in% c(df_node_stress_roi_perm %>% 
+                                     filter(feature == "degree", abs(perm_effect_size) > 2) %>% 
+                                     pull(region_of_interest)
+  ) &
+    feature == "degree" & term == "groupMS"
+  ) %>% 
+  mutate(
+    data = map(
+      .x = data,
+      .f = ~ .x %>% 
+        mutate(residuals = lm(scale(value) ~ sex + age + tbv, data = .x)$residuals)
+    )
+  ) %>% 
+  unnest(cols = c(data)) %>% 
+  
+  # normalize nodal strength for plot
+  group_by(timepoint, feature, region_of_interest) %>% 
+  mutate(normalized_value = scale(value)[,1])
+```
+
+```{r Fig6b.plot, fig.width = 2.25, fig.height = 1.8}
+df_fig6b %>% 
+  ggplot(aes(x = residuals, 
+             y = reorder(region_of_interest %>% 
+                           #str_replace(" ", "\n") %>% 
+                           #str_replace(", ", "\n") %>% 
+                           #str_replace(" area ", "\narea ") %>% 
+                           str_remove(" cortex"), #%>% 
+                           #str_wrap(width = 10), 
+                         t_value)
+  )
+  ) +
+  geom_point(aes(color = group), size = 0.3, position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.85)) +
+  geom_boxplot(aes(color = group, fill = group), alpha = 0.2, outlier.shape = NA) +
+  annotate(geom = "text", y = 4.7, x = -2.5, hjust = 0, label = "Control", color = group_cols["control"], size = 3) +
+  annotate(geom = "text", y = 4.2, x = -2.5, hjust = 0, label = "RMS", color = group_cols["MS"], size = 3) +
+  scale_color_manual(values = group_cols) +
+  scale_fill_manual(values = group_cols) +
+  coord_cartesian(clip = "off") +
+  labs(x = "Normalized strength (s)", y = NULL,
+       title = "B | Significant RMS effects") + 
+  theme(legend.position = "none",
+        axis.text.x = element_text(size = 8),
+        axis.text.y = element_text(size = 8),
+        axis.title.x = element_text(size = 9),
+        plot.title = element_text(size = 11)
+  )
+map(
+  .x = c(".png", ".pdf"),
+  .f = ~ ggsave(paste0(figures_dir, "B.RMS_effects_boxplots", .x), width = 2.25, height = 1.8)
+)
+```
+
+
+### C | Heatmap comparison of edge weight effect sizes (PND 63)
+
+```{r Fig6c, fig.width = 3, fig.height = 2.75}
+df_mind_rms_control <- df_mind_cortex %>% 
+    filter(str_detect(subject, "EDA") & timepoint == 63) %>% 
+    group_by(group, R1, R2) %>% 
+    summarise(weight = median(weight)) %>% 
+    mutate(
+        group = ifelse(group == "MS", "RMS", "Control"),
+        weight = ifelse(R1 == R2, NA, weight)
+    ) %>% 
+    pivot_wider(id_cols = c(R1, R2), names_from = "group", values_from = "weight")
+
+## Format tibble to plot
+df_mind_rms_control_plot <- df_mind_rms_control %>%
+    mutate(
+        R1 = factor(R1, levels = roi_order),
+        R2 = factor(R2, levels = roi_order),
+        RMS_scaled = (RMS - mean(RMS, na.rm = TRUE))/sd(RMS, na.rm = TRUE),
+        Control_scaled = (Control - mean(Control, na.rm = TRUE))/sd(Control, na.rm = TRUE)
+    ) %>%
+    #group_by(edge = paste0(pmin(R1, R2), "-", pmax(R1, R2))) %>% 
+    mutate(
+        x_num = as.numeric(R1),
+        y_num = as.numeric(R2),
+        triangle = ifelse( x_num >= y_num, "lower", "upper")
+    ) %>% 
+    pivot_longer(c(RMS, Control), names_to = "network", values_to = "value") %>%
+    filter( (triangle == "upper" & str_detect(network, "RMS")) | (triangle == "lower" & str_detect(network, "Control")) )
+
+# Plot
+df_mind_rms_control_plot %>% 
+    ggplot(aes(x = R1, y = R2)) +
+    geom_tile(aes(fill = value)) +
+    geom_hline(yintercept = system_lines, color = "white", linewidth = 0.15) +
+    geom_vline(xintercept = system_lines, color = "white", linewidth = 0.15) +
+    geom_abline(color = "black") +
+    annotate(xmin = c(0.5, system_lines),
+             xmax = c(system_lines, length(roi_order) + 0.5),
+             ymin = -1.25, ymax = 0,
+             geom = "rect",
+             fill = system_colors) +
+    scale_fill_viridis(guide = guide_colorbar(title = NULL), na.value = "white") +
+    labs(x = "RMS PND 63 median (N=21)", y = "Control PND 63 median (N=19)", 
+         title = "C | Experimental cohort MIND networks") +
+    theme(
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        axis.title.x = element_text(vjust = 91),
+        axis.title.y = element_text(vjust = 98, angle = 270),
+        legend.position = "left",
+        legend.margin = margin(r = -30),
+        legend.text = element_text(margin = margin(l = 2)),
+        legend.key.height = unit(1.15, "cm"),
+        legend.key.width = unit(0.15, "cm"),
+        plot.margin = margin(b = -10, r = 10),
+        axis.line = element_blank()
+    )
+map(
+  .x = c(".png", ".pdf"),
+  .f = ~ ggsave(paste0(figures_dir, "C.RMS_control_networks", .x), width = 3.0, height = 2.75)
+)
+```
+
+### D | Circle plot of case-control system-level edge weight effect sizes (PND 63)
+
+```{r Figd, fig.width = 3.0, fig.height = 0.5}
+## Write function to abbreviate names
+f_abbreviate_names <- function(names) {
+  names %>% 
+    str_remove(" region| cortex| formation") %>%
+    str_wrap(15) %>% 
+    str_replace("frontal", "-\nfrontal") %>%
+    str_replace("sensory", "-\nsensory") %>%
+    str_replace("splenial", "-\nsplenial") %>%
+    str_replace("campal", "-\ncampal")
+}
+
+## Abbreviate system names (to save space on plot)
+system_order_abrv <- f_abbreviate_names(system_order)
+system_colors_abrv <- system_colors
+names(system_colors_abrv) <- system_order_abrv
+
+## Create dataframe to generate graph
+df_fig4d_graph <- df_edge_stress_system_perm %>% 
+  dplyr::rename("t_value" = "actual_effect_size") %>% 
+
+  # separate edge into constituent systems
+  separate(system_edge, into = c("S1", "S2"), sep = " - ") %>% 
+  dplyr::select(S1, S2, t_value) %>% 
+  
+  # edit node names (to save space)
+  mutate_at(vars(c(S1, S2)), ~ f_abbreviate_names(.x)) %>% 
+  
+  # filter for desired effect size
+  filter(abs(t_value) > 3.3) %>% 
+  
+  # order for plotting
+  arrange(abs(t_value))
+
+## Create graph
+fig4d_graph <- graph_from_data_frame(df_fig4d_graph)
+
+## Order the nodes (for consistency across plots & with the matrix)
+fig4d_graph <- permute(fig4d_graph, match(V(fig4d_graph)$name, system_order_abrv))
+V(fig4d_graph)$node_label <- names(V(fig4d_graph))
+
+## Identify max and min of effect size color scale based on maximum absolute weight
+edge_scale_max <- df_edge_stress_system_perm %>% 
+  pull(actual_effect_size) %>% 
+  abs %>% 
+  max %>% 
+  ceiling
+
+# ## Plot
+# ggraph(fig4d_graph, layout = "linear", circular = TRUE) + 
+#     geom_edge_arc(aes(color = t_value, width = abs(t_value))) + 
+#     geom_edge_loop(aes(color = t_value, width = abs(t_value))) + 
+#     geom_node_text(aes(label = name, angle = node_angle(x, y)), size = 2.75, hjust = "outward") +
+#     geom_node_point(shape = 21, size = 4.5, aes(fill = name)) +
+#     theme_graph() +
+#     scale_edge_color_gradientn(colors = RMS_effect_size_scale, name = "slope", 
+#                                limits = c(-edge_scale_max, edge_scale_max),
+#                                na.value = "transparent"
+#     ) +
+#     scale_fill_manual(values = system_colors_abrv, guide = "none") +
+#     scale_edge_width_continuous(range = c(0.1, 2), guide = "none") +
+#     coord_fixed(clip = "off") +
+#     guides(fill = guide_none()) +
+#     theme_graph() +
+#     theme(
+#         plot.title = element_text(size = 11),
+#         legend.position = "none"
+#     )
+# map(
+#   .x = c(".png", ".pdf"),
+#   .f = ~ ggsave(paste0(figures_dir, "D.edge_level_RMS_effects", .x), width = 3.5, height = 3.5)
+# )
+
+## Legend only
+circleplot_legend <- (
+  df_fig4d_graph %>% 
+    ggplot(aes(x = paste0(S1, S2), y = t_value)) +
+    geom_point(aes(color = t_value)) +
+    guides(colour = guide_colorbar(title = NULL, title.hjust = 0.5, title.position = "top")) +
+    scale_color_gradientn(colors = RMS_effect_size_scale, limits = c(-edge_scale_max, edge_scale_max)) +
+    theme(legend.margin = margin(t = 0, r = 0, b = 0, l = 0),
+          legend.direction = "horizontal",
+          legend.justification = "center",
+          legend.key.width = unit(1.5, "cm"),
+          legend.key.height = unit(0.15, "cm")
+    )
+) %>% 
+  get_legend()
+as.ggplot(circleplot_legend)
+map(
+  .x = c(".png", ".pdf"),
+  .f = ~ ggsave(paste0(figures_dir, "D.legend", .x), width = 3.5, height = 0.5)
+)
+```

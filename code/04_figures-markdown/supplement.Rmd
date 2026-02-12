@@ -1,0 +1,1005 @@
+---
+title: "Supplemental figures"
+author: "Rachel Smith"
+output: pdf_document
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(fig.width = 2.5, fig.height = 2, collapse = TRUE, warning = FALSE, message = FALSE, echo = FALSE)
+
+## Set paths and load data
+base_dir <- "~/Documents/PhD/projects/CamRat/CamRat/"
+source(paste0(base_dir, "code/03.data_analysis/setup.R"))
+supplement_figures_dir <- paste0(base_dir, "outputs/figures/supplement/")
+tables_dir <- paste0(base_dir, "outputs/tables/")
+analysis_objects_dir <- paste0(base_dir, "outputs/objects/Fig2/") # to save analysis objects for figures
+
+## Load data objects for all figures (Fig 2, 3, & 4)
+analysis_objects_dirs <- paste0(base_dir, "outputs/objects/Fig", seq(1:4), "/")
+for (dir in analysis_objects_dirs) {
+  objects <- list.files(dir)
+  objects <- objects[!str_detect(objects, "null|archive")]
+  for (obj in objects){
+    print(paste0("loading ", obj, "...."))
+    load(paste0(dir, obj))
+  }
+}
+
+## Write function to calculate the Pearson and Spearman correlations of two vectors, as well as the respective P values
+f_calc_pearson_spearman <- function(vec1, vec2) {
+    
+    ## Calculate the Pearson correlation
+    pearson_res <- cor.test(vec1, vec2, method = "pearson")
+    pearson_cor <- pearson_res$estimate
+    pearson_tstat <- pearson_res$statistic
+    pearson_df <- pearson_res$parameter
+    pearson_pvalue <- 2 * pt(abs(pearson_tstat), df = pearson_df, lower.tail = FALSE)
+    
+    ## Calculate the Spearman correlation
+    spearman_res <- cor.test(vec1, vec2, method = "spearman")
+    spearman_cor <- spearman_res$estimate
+    n <- length(vec1)
+    spearman_df <- n - 2
+    #spearman_sstat <- spearman_res$statistic
+    spearman_tstat <- spearman_cor * sqrt(spearman_df / (1 - spearman_cor^2))
+    spearman_pvalue <- 2 * pt(abs(spearman_tstat), df = spearman_df, lower.tail = FALSE)
+
+    ## Return results as a tibble
+    res <- tibble(
+        test = c("Pearson", "Spearman"),
+        correlation = c(pearson_cor, spearman_cor),
+        t_stat = c(pearson_tstat, spearman_tstat),
+        p_value = c(pearson_pvalue, spearman_pvalue)
+    )
+    return(res)
+}
+```
+
+## FIG S1 ##
+### Normative heatmap with labels
+
+```{r FigS1.plot}
+figS1 <- df_normative_mind %>%  
+  mutate(R1 = factor(R1, levels = roi_order),
+         R2 = factor(R2, levels = roi_order)
+  ) %>% 
+  mutate(median_weight = ifelse(R1 == R2, NA, median_weight)) %>% #pull(R1) %>% unique
+  
+  # plot
+  ggplot(aes(x = R1, y = R2, fill = median_weight)) +
+  geom_tile() +
+  
+  # top bar annotation
+  annotate(xmin = c(0.5, system_lines),
+           xmax = c(system_lines, length(roi_order) + 0.5),
+           ymin = length(roi_order) + 1.25, ymax = length(roi_order) + 2.5,
+           geom = "rect",
+           fill = system_colors) +
+
+  # plot aesthetics
+  scale_fill_viridis(option = "viridis", na.value = "white") +
+  scale_y_discrete(position = "right") +
+  labs(x = "", y = "", title = "S1. Adult normative cortical microstructural network") +
+  guides(fill = guide_colourbar(title.position = "top", title.hjust = 0.5, title = "edge weight")) +
+  theme(axis.text.x = element_blank(),
+        axis.ticks = element_blank(),
+        axis.line = element_blank(), 
+        legend.position = "bottom",
+        legend.justification = "center",
+        legend.text = element_text(size = 9),
+        legend.key.width = unit(2.25, "cm"),
+        legend.key.height = unit(0.2, "cm"),
+        legend.margin = margin(t = -25)
+  )
+```
+
+```{r FigS1.save, fig.height = 6, fig.width = 8}
+figS1
+map(
+  .x = c(".png", ".pdf"),
+  .f = ~ ggsave(paste0(supplement_figures_dir, "S1.normative_network_with_labels", .x), width = 8, height = 6)
+)
+```
+
+
+## FIG S2 ##
+### Glass brain plot showing anatomical distribution of cortical systems
+
+```{r figS2.plot, warning = FALSE}
+## Generate plots for each brain plane
+l_glass_brain_plots <- map(.x = c("sagittal", "coronal", "axial"), 
+    .f = ~ f_plot_glass_brain(system_order, 
+                              outline_width = 0.75,
+                              node_size = 1.5,
+                              edge_size = 0.5,
+                              plane_to_plot = .x)
+) %>% 
+  wrap_plots(ncol = 3)
+
+## Combine plot using patchwork
+layout <- c(
+  patchwork::area(t = 1, b = 90, l = 1, r = 120),
+  patchwork::area(t = 91, b = 180, l = 1, r = 90),
+  patchwork::area(t = 1, b = 180, l = 91, r = 180)
+)
+figS2 <- l_glass_brain_plots[[1]] + l_glass_brain_plots[[2]] + l_glass_brain_plots[[3]] +
+  plot_layout(design = layout) &
+  plot_annotation(title = "S2. Anatomy of cortical systems") &
+  theme(plot.margin = margin(t = 0, r = 0, b = 7, l = 0))
+```
+
+```{r figS2.save, fig.width = 3.5, fig.height = 3}
+figS2
+map(
+  .x = c(".png", ".pdf"),
+  .f = ~ ggsave(paste0(supplement_figures_dir, "S2.anatomical_distribution_of_systems", .x), width = 3.5, height = 3)
+)
+```
+
+
+## FIG S3 ##
+### Strength distribution and edge weight distribution
+
+#### A | Strength
+```{r FigS3A.plot}
+figS3A <- df_normative_degree %>% 
+  ggplot(aes(x = median_degree)) +
+  #geom_histogram(binwidth = 3) +
+  geom_density() +
+  geom_point(aes(y = -0.05, color = median_degree), size = 0.75, position = position_jitter(height = 0.025)) +
+  geom_boxplot(aes(y = -0.05), width = 0.075, fill = "transparent", outlier.shape = NA) +
+  scale_color_viridis(guide = "none") +
+  scale_x_continuous(limits = c(34, 46), breaks = seq(34, 46, by = 2)) +
+  labs(x = "Nodal strength", y = NULL,
+       title = "A | Strength distribution")
+```
+
+```{r Fig4A.save, fig.width = 2.5, fig.height = 2, eval = FALSE}
+figS3A
+map(
+  .x = c(".png", ".pdf"),
+  .f = ~ ggsave(paste0(supplement_figures_dir, "S3A.normative_strength_distribution", .x), width = fig_width, height = fig_height)
+)
+```
+
+#### B | Edge weights
+```{r FigS3B.plot}
+figS3B <- df_normative_mind %>% 
+  filter(R1 != R2) %>% 
+  
+  ggplot(aes(x = median_weight)) +
+  #geom_histogram(binwidth = 3) +
+  geom_density() +
+  #geom_point(aes(y = -0.5, color = median_weight), size = 0.75, position = position_jitter(height = 0.25)) +
+  geom_boxplot(aes(y = -0.5), width = 0.75, fill = "transparent", outlier.shape = NA) +
+  scale_color_viridis(guide = "none") +
+  #scale_x_continuous(limits = c(34, 46), breaks = seq(34, 46, by = 2)) +
+  labs(x = "Edge weight", y = NULL,
+       title = "B | Edge weight distribution")
+```
+
+```{r Fig4B.save, fig.width = 2.5, fig.height = 2, eval = FALSE}
+figS3B
+map(
+  .x = c(".png", ".pdf"),
+  .f = ~ ggsave(paste0(supplement_figures_dir, "S3B.normative_edge_weight_distribution", .x), width = fig_width, height = fig_height)
+)
+```
+
+
+## FIG S4 ##
+
+```{r FigS4.plot}
+figS4 <- df_normative_degree %>% 
+  filter(region_of_interest %in% hubs) %>% 
+  left_join(df_abbreviations, by = join_by(region_of_interest)) %>% 
+
+  ggplot(aes(x = median_degree, y = reorder(abbreviation, median_degree))) +
+  geom_errorbar(aes(xmin = median_degree - sd_degree, xmax = median_degree + sd_degree)) +
+  geom_point(aes(fill = system), shape = 21, size = 2.75) +
+  scale_fill_manual(values = system_colors, guide = "none") +
+  #scale_fill_viridis(guide = "none") +
+  labs(x = "Degree (+/- sd)", y = NULL,
+       title = "S4. Top 10 hubs") +
+  theme(axis.text.y = element_text(size = 9))
+```
+
+```{r FigS4.save, fig.width = 2.5, fig.height = 2}
+figS4
+map(
+  .x = c(".png", ".pdf"),
+  .f = ~ ggsave(paste0(supplement_figures_dir, "S4.normative_network_hubs_by_degree", .x), width = fig_width, height = fig_height)
+)
+```
+
+
+## FIG S5 ##
+### Null network permutation bins for distance correction
+
+```{r FigS5.plot}
+figS5 <- df_normative_mind_distance %>% 
+  pivot_longer(c(median_weight, distance), names_to = "metric", values_to = "value") %>% 
+  
+  ggplot(aes(x = value)) +
+  geom_histogram(fill = "lightgray", color = "black", bins = 50) +
+  facet_grid(distance_bin ~ metric, scales = "free", 
+             labeller = as_labeller(c("distance" = "Euclidean distance", "median_weight" = "Normative weight",
+                                      "proximal" = "Proximal", "intermediate" = "Intermediate", "distal" = "Distal")
+                                    )
+  ) +
+  coord_cartesian(clip = "off") +
+  labs(x = NULL, 
+       title = "S5. Edge distance bins for null network construction")
+```
+
+```{r FigS5.save, fig.width = 3.5, fig.height = 3.75, eval = FALSE}
+figS5
+map(
+  .x = c(".png", ".pdf"),
+  .f = ~ ggsave(paste0(supplement_figures_dir, "S5.distance_permutation_bins", .x), width = 3.5, height = 3.75)
+)
+```
+
+
+
+## FIG S6 ##
+### Rich club coefficient vs permuted null distribution
+
+```{r FigS6.plot}
+figS6 <- df_rich_club_all %>% 
+  ggplot(aes(x = phi)) +
+  geom_density() +
+  geom_point(data = df_rich_club_all %>% filter(network == "normative"),
+             mapping = aes(x = phi, y = 0), shape = 21, fill = "maroon", size = 5
+  ) +
+  coord_cartesian(clip = "off") +
+  labs(x = "Rich club coefficient", y = NULL,
+       title = "S6. Normative network rich club coefficient in null distribution")
+```
+
+```{r FigS6.save, fig.width = 2.5, fig.height = 2}
+figS6
+map(
+  .x = c(".png", ".pdf"),
+  .f = ~ ggsave(paste0(supplement_figures_dir, "S6.rich_club_distribution", .x), width = fig_width, height = fig_height)
+)
+```
+
+## FIG S7 ##
+### Cortical type: Within- vs between-class
+
+```{r FigS7.plot, fig.width = 6.5}
+types <- c("archicortex", "agranular", "dysgranular")
+figS7 <- df_mind_cortical_type_all %>% 
+  filter(cortical_type1 %in% types & cortical_type2 %in% types) %>% 
+  mutate(cortex_edge = str_trim(cortex_edge)) %>% 
+  # mutate(cortex_edge = case_when(
+  #   cortex_edge == "allo-allo" ~ "Allocortex -Allocortex",
+  #   cortex_edge == "allo-meso" ~ "Allocortex -Mesocortex",
+  #   cortex_edge == "meso-meso" ~ "Mesocortex -Mesocortex"
+  # )) %>% 
+  
+  ggplot(aes(x = cortex_edge, y = weight)) +
+  geom_point(aes(color = cortex_comparison), position = position_jitter(width = 0.2), size = 0.6, alpha = 0.75) +
+  geom_boxplot(aes(color = cortex_comparison, fill = cortex_comparison), alpha = 0.1, outlier.shape = NA) +
+  annotate(geom = "text", label = "Intra-class \nconnection", color = "maroon", x = 1, y = 0.675, size = 3)  +
+  scale_color_manual(values = c("within" = "maroon", "between" = "darkgrey"), guide = "none") +
+  scale_fill_manual(values = c("within" = "maroon", "between" = "darkgrey"), guide = "none") +
+  labs(x = NULL, y = "MIND edge weight",
+       title = "S7. Edge weights by cortex connection type")
+```
+
+```{r FigS5.stats}
+df_mind_cortical_type_all %>% 
+  filter(cortical_type1 %in% types & cortical_type2 %in% types) %>% 
+  aov(weight ~ cortex_edge, data = .) %>% TukeyHSD
+```
+
+```{r FigS7.save, fig.width = 2.5, fig.height = 2, eval = FALSE}
+figS7
+map(
+  .x = c(".png", ".pdf"),
+  .f = ~ ggsave(paste0(supplement_figures_dir, "S7.cortical_type_distribution", .x), width = fig_width, height = fig_height)
+)
+```
+
+## FIG S8 --> FIG S4 ##
+### Tract-tracing: Jaccard heatmap network comparison 
+
+#### A | Heatmaps
+
+```{r FigS8a.function}
+f_plot_figS8 <- function(df, network, axis_text_size) {
+  df %>% 
+    filter(name == network) %>% 
+    
+    ggplot(aes(x = broad_Swanson_name1, y = broad_Swanson_name2, fill = weight)) +
+    geom_tile() +
+    facet_wrap(vars(name)) +
+    scale_fill_viridis() +
+    guides(fill = guide_colorbar(title = NULL)) +
+    labs(x = NULL, y = NULL) +
+    theme(
+      axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, size = axis_text_size),
+      axis.text.y = element_text(size = axis_text_size),
+      axis.ticks = element_blank(),
+      axis.line = element_blank(),
+      legend.title = element_text(angle = 90),
+      legend.key.height = unit(1, "cm"),
+      legend.key.width = unit(0.15, "cm"),
+      legend.margin = margin(l = -10)
+    )
+}
+```
+
+```{r FigS8a.prep}
+## Format data frame for plotting
+df_figS8 <- df_jaccard_mind %>% 
+  
+  # normalize weights to plot on similar scale
+  # mutate(jaccard = scale(jaccard)[,1],
+  #        mind_weight = scale(mind_weight)[,1]
+  # ) %>% 
+  
+  # format df for plotting
+  pivot_longer(c(jaccard, mind_weight), values_to = "weight") %>%
+  mutate(name = ifelse(str_detect(name, "mind"), "Normative MIND", "Tract-tracing similarity matrix")) %>% 
+  mutate(
+    broad_Swanson_name1 = factor(broad_Swanson_name1, levels = Swanson_roi_order),
+    broad_Swanson_name2 = factor(broad_Swanson_name2, levels = Swanson_roi_order)
+  )
+
+## Pull names of networks to plot
+networks <- df_figS8 %>% pull(name) %>% unique()
+```
+
+```{r FigS8a.plot}
+layout <- c(
+  patchwork::area(t = 1, b  = 180, l = 1, r = 180),
+  patchwork::area(t = 181, b  = 360, l = 1, r = 180)
+)
+figS8a <- 
+  (f_plot_figS8(df_figS8, networks[2], axis_text_size = 7.5) + theme(axis.text.x = element_blank())) + 
+  #plot_spacer() +
+  (f_plot_figS8(df_figS8, networks[1], axis_text_size = 7.5)) +
+  plot_layout(design = layout) +
+  plot_annotation(title = "A | Heatmaps of normative network and tract-tracing similarity matrix")
+```
+
+```{r FigS8a.save, fig.height = 8, fig.width = 5.5, eval = FALSE}
+figS8a
+map(
+  .x = c(".png", ".pdf"),
+  .f = ~ ggsave(paste0(supplement_figures_dir, "S8a.tract_tracing_similarity_heatmaps", .x), width = 5.5, height = 8)
+)
+```
+
+#### C | Scatter plot without parahippocampal connections
+
+```{r FigS8b.prep}
+## Load AMBA to WHS atlas mappings
+df_whs_to_bm4 <- read_xlsx(paste0(base_dir, "data/WHS_analysis/WHS_to_Swanson_cortex.xlsx")) %>% 
+  filter(WHS_name %in% cortical_ROIs)
+
+## Identify hippocampal regions
+hippocampal_regions_bm4 <- df_whs_to_bm4 %>% 
+  left_join(df_system_hierarchy, by = join_by("WHS_name" == "region_of_interest")) %>% 
+  filter(str_detect(system, "Parahippocampal")) %>% 
+  pull(broad_Swanson_name) %>% 
+  unique
+
+## Filter dataframe to remove edges that contain the hippocampus
+df_figS8b <- df_jaccard_mind %>%
+  filter(!(broad_Swanson_name1 %in% hippocampal_regions_bm4) & !(broad_Swanson_name2 %in% hippocampal_regions_bm4)) %>% 
+  group_by(edge = paste0(pmin(broad_Swanson_name1, broad_Swanson_name2), "-", pmax(broad_Swanson_name1, broad_Swanson_name2))) %>% 
+  slice(1) %>% 
+  ungroup
+
+## Pearson & Spearman correlation (plot Pearson)
+f_calc_pearson_spearman(df_figS8b$jaccard, df_figS8b$mind_weight)
+```
+
+```{r FigS8b.plot}
+figS8b <- df_figS8b %>% 
+  ggplot(aes(x = jaccard, y = mind_weight)) +
+  geom_point(size = 0.5) +
+  geom_smooth(method = "lm", color = "maroon", linewidth = 0.5) +
+  stat_cor(method = "spearman", cor.coef.name = "rho", p.digits = NA, label.y = 0.625, label.x = 0.5,
+           label.sep = "\n", hjust = 0, size = 3.5, color = "maroon") +
+  coord_cartesian(clip = "off") +
+  labs(x = "Tract-tracing Jaccard index", y = "Edge weight (w)",
+       title = "B | Tract-tracing similarity \nwithout paraHIP edges") +
+  theme(
+    legend.position = "none",
+    axis.text = element_text(size = 7),
+    axis.title = element_text(size = 8)
+    
+  )
+```
+
+```{r FigS8b.save, fig.height = 2, fig.width = 2.5, eval = FALSE}
+figS8b
+map(
+  .x = c(".png", ".pdf"),
+  .f = ~ ggsave(paste0(supplement_figures_dir, "S8b.tract_tracing_similarity_noHIP", .x), width = fig_width, height = fig_height)
+)
+```
+
+## FIG S9 --> FIG S3 ##
+### Mouse gene expression similarity
+
+#### A | Heatmaps
+
+```{r FigS9a.prep}
+## Convert to matrix
+merish_cor_withOB <- df_mind_merfish_withOB %>% 
+  pivot_wider(id_cols = parcellation_structure1, names_from = parcellation_structure2, values_from = gene_cor) %>% 
+  as.data.frame %>% 
+  column_to_rownames("parcellation_structure1") %>% 
+  as.matrix
+
+# define ROI order for plot
+merfish_roi_order <- merish_cor_withOB[hclust(dist(merish_cor_withOB))$order,] %>% rownames
+length(merfish_roi_order)
+
+## Set ROI order as factor levels for structure labels & pivot longer for facet
+df_figS9a <- df_mind_merfish_withOB %>% 
+  mutate(parcellation_structure1 = factor(parcellation_structure1, levels = merfish_roi_order),
+         parcellation_structure2 = factor(parcellation_structure2, levels = merfish_roi_order)
+  ) %>% 
+  pivot_longer(c(mind_weight, gene_cor), names_to = "network", values_to = "value")
+```
+
+```{r FigS9a.plot}
+figS9a <- df_figS9a %>% 
+  ggplot(aes(x = parcellation_structure1, y = parcellation_structure2, fill = value)) +
+  geom_tile() +
+  scale_fill_viridis(option = "viridis", na.value = "white") +
+  facet_wrap(vars(network), labeller = as_labeller(c("gene_cor" = "Gene expression similarity", "mind_weight" = "Normative MIND"))) +
+  guides(fill = guide_colorbar(title = "edge weight", title.position = "left", title.hjust = 0.5)) +
+  labs(x = "", y = "", 
+       title = "A | Mouse gene expression vs MIND similarity matrices"
+  ) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, size = 7),
+        axis.text.y = element_text(size = 7),
+        legend.title = element_text(angle = 90),
+        legend.key.height = unit(1.5, "cm"),
+        legend.key.width = unit(0.15, "cm"),
+        legend.margin = margin(l = -10)
+  )
+```
+
+```{r FigS9a.save, fig.width = 7.5, fig.height = 4.25}
+figS9a
+map(
+  .x = c(".png", ".pdf"),
+  .f = ~ ggsave(paste0(supplement_figures_dir, "S9a.gene_expression_similarity_heatmaps", .x), width = 7.5, height = 4.25)
+)
+```
+
+#### B | Correlation with OB
+
+```{r FigS9b.plot}
+## Pearson & Spearman correlation (plot Pearson)
+f_calc_pearson_spearman(df_mind_merfish_withOB$gene_cor, df_mind_merfish_withOB$mind_weight)
+
+## Plot
+figS9b <- df_mind_merfish_withOB %>% 
+  ggplot(aes(x = gene_cor, y = mind_weight)) +
+  geom_point(color = "black", size = 0.5) +
+  geom_smooth(method = "lm", color = "maroon", se = FALSE, linewidth = 0.75) +
+  stat_cor(cor.coef.name = "rho", label.sep = "\n", size = 3, color = "maroon",
+           label.y.npc = "bottom", label.x.npc = "right", hjust = 1.2, vjust = 0) +
+  scale_fill_viridis(option = "viridis", na.value = "white", guide = "none") +
+  labs(x = "Gene expression correlation", y = "MIND edge weight",
+       title = "B | Gene expression vs MIND \n(with OB)") +
+  theme(
+    axis.text = element_text(size = 8),
+    axis.title = element_text(size = 9)
+  )
+```
+
+```{r FigS9b.save, fig.height = 1.75, fig.width = 2.1}
+figS9b
+map(
+  .x = c(".png", ".pdf"),
+  .f = ~ ggsave(paste0(supplement_figures_dir, "S9b.gene_expression_correlation_withOB", .x), width = 2.1, height = 1.75)
+)
+```
+
+#### C | Correlation without OB
+
+```{r FigS9c.plot}
+## Pearson & Spearman correlation (plot Pearson)
+f_calc_pearson_spearman(df_mind_merfish$gene_cor, df_mind_merfish$mind_weight)
+
+## Plot
+figS9c <- df_mind_merfish %>% 
+  ggplot(aes(x = gene_cor, y = mind_weight)) +
+  geom_point(color = "black", size = 0.5) +
+  geom_smooth(method = "lm", color = "maroon", se = FALSE, linewidth = 0.75) +
+  stat_cor(cor.coef.name = "rho", label.sep = "\n", size = 3, color = "maroon",
+           label.y.npc = "bottom", label.x.npc = "left", hjust = 0, vjust = 0) +
+  scale_fill_viridis(option = "viridis", na.value = "white", guide = "none") +
+  labs(x = "Gene expression correlation", y = "MIND edge weight",
+       title = "C | Gene expression vs MIND \n(without OB)") +
+  theme(
+    axis.text = element_text(size = 8),
+    axis.title = element_text(size = 9)
+  )
+```
+
+```{r FigS9c.save, fig.height = 1.75, fig.width = 2.1}
+figS9c
+map(
+  .x = c(".png", ".pdf"),
+  .f = ~ ggsave(paste0(supplement_figures_dir, "S9c.gene_expression_correlation_withoutOB", .x), width = 2.1, height = 1.75)
+)
+```
+
+#### D | Correlation without or hippocampal edges
+
+```{r FigS9d.prep}
+## Load AMBA to WHS atlas mappings
+df_whs_to_aba <- read_xlsx(paste0(base_dir, "data/WHS_analysis/BMrat_to_ABAmouse.xlsx"), sheet = 1) %>% 
+  dplyr::select(-parcellation_division) %>% 
+  filter(!is.na(parcellation_structure)) %>% # remove regions not present in ABA data
+  distinct() %>%
+  
+  # include cortical regions and OB regions for now (can remove later, this is for supplement)
+  filter(WHS %in% cortical_ROIs)
+
+## Identify hippocampal regions
+hippocampal_regions_amba <- df_whs_to_aba %>% 
+  left_join(df_system_hierarchy, by = join_by("WHS" == "region_of_interest")) %>% 
+  filter(str_detect(system, "Hippocampal")) %>% 
+  pull(parcellation_structure) %>% 
+  unique
+
+## Filter dataframe to remove edges that contain the hippocampus
+df_figS9d <- df_mind_merfish %>%
+  filter(!(parcellation_structure1 %in% hippocampal_regions_amba) & !(parcellation_structure2 %in% hippocampal_regions_amba)) %>% 
+  mutate_if(is.factor, ~as.character(.x)) %>% 
+  group_by(edge = paste0(pmin(parcellation_structure1, parcellation_structure2), "-", pmax(parcellation_structure1, parcellation_structure2))) %>% 
+  slice(1) %>% 
+  ungroup
+
+## Pearson & Spearman correlation (plot Pearson)
+f_calc_pearson_spearman(df_figS9d$gene_cor, df_figS9d$mind_weight)
+```
+
+```{r FigS9d.plot}
+figS9d <- df_figS9d %>% 
+  ggplot(aes(x = gene_cor, y = mind_weight)) +
+  geom_point(color = "black", size = 0.5) +
+  geom_smooth(method = "lm", color = "maroon", se = FALSE, linewidth = 0.75) +
+  stat_cor(cor.coef.name = "rho", size = 3, color = "maroon",
+           label.y.npc = "top", label.x.npc = "left", hjust = 0, vjust = 0.65) +
+  scale_fill_viridis(option = "viridis", na.value = "white", guide = "none") +
+  labs(x = "Gene expression correlation", y = "MIND edge weight",
+       title = "D | Gene expression vs MIND \n(without OB or HIP)") +
+  coord_cartesian(clip = "off") +
+  theme(
+    axis.text = element_text(size = 8),
+    axis.title = element_text(size = 9)
+  )
+```
+
+```{r FigS9d.save, fig.height = 1.75, fig.width = 2.1}
+figS9d
+map(
+  .x = c(".png", ".pdf"),
+  .f = ~ ggsave(paste0(supplement_figures_dir, "S9d.gene_expression_correlation_withoutOB_HIP", .x), width = 2.1, height = 1.75)
+)
+```
+
+## FIG S10 ##
+### Example calculation of nodal slope
+
+```{r FigS10.prep}
+## Select example region to plot
+figS10_example_roi <- "Frontal association cortex"
+
+## Filter data for this figure
+df_figS10 <- df_data_cortex %>% 
+  filter(study == "MRC" & region_of_interest == figS10_example_roi & feature == "degree" & timepoint %in% c(20, 35)) %>% 
+  group_by(region_of_interest, timepoint) %>% 
+  mutate(age = median(age))
+
+## Calculate slope for each individual
+df_figS10_slopes <- df_figS10 %>% 
+  pivot_wider(id_cols = subject, names_from = timepoint, values_from = value) %>% 
+  mutate(slope = (`35` - `20`) / (35 - 20)
+  )
+
+## Determine medians to plot actual slope & intercepts
+df_figS10_medians <- df_figS10 %>% 
+  group_by(age) %>% 
+  summarise(value = median(value)) %>% 
+  mutate(slope = df_node_slopes_roi %>% 
+           filter(region_of_interest == figS10_example_roi & feature == "degree" & period == "early") %>% 
+           pull(slope)
+  )
+
+## Identify maximum absolute slope for color scale
+max_slope <- df_figS10_slopes %>% 
+  filter(!is.na(slope)) %>% 
+  pull(slope) %>%
+  abs() %>% 
+  max()
+```
+
+```{r FigS10.plot}
+figS10 <- df_figS10 %>% 
+  left_join(df_figS10_slopes %>% dplyr::select(subject, slope)) %>% 
+  
+  ggplot(aes(x = age, y = value)) +
+  geom_line(aes(group = subject, color = slope)) +
+  geom_point(aes(fill = slope), shape = 21) +
+  geom_line(data = df_figS10_medians, color = "black", linewidth = 3) +
+  geom_line(data = df_figS10_medians, mapping = aes(color = slope), linewidth = 1.75) +
+  geom_point(data = df_figS10_medians, mapping = aes(fill = slope), shape = 21, size = 4, stroke = 1.25) +
+  facet_wrap(vars(region_of_interest)) +
+  
+  scale_fill_gradientn(colors = slope_effect_size_scale, limits = c(-max_slope, max_slope)) +
+  scale_color_gradientn(colors = slope_effect_size_scale, limits = c(-max_slope, max_slope), guide = "none") +
+  scale_x_continuous(breaks = c(20, 35), limits = c(20, 35)) +
+  coord_cartesian(clip = "off") +
+  guides(fill = guide_colorbar(title = "Δs", title.position = "left", title.hjust = 0.5, title.vjust = -2)) +
+  labs(y = "Strength (s)", title = "S10. Calculating regional Δs") +
+  theme(legend.position = "right",
+        legend.title = element_text(angle = 90),
+        legend.key.height = unit(0.45, "cm"),
+        legend.key.width = unit(0.1, "cm"),
+        legend.margin = margin(l = -25)
+  )
+```
+
+```{r FigS10.save, fig.width = 2.5, fig.height = 2, eval = FALSE}
+figS10
+map(
+  .x = c(".png", ".pdf"),
+  .f = ~ ggsave(paste0(supplement_figures_dir, "S10.example_slope_calculation", .x), width = fig_width, height = fig_height)
+)
+```
+
+## FIG S11 ##
+### Development curves of significant nodal strength changes in early development & aging
+
+```{r FigS11.prep}
+## Define ROIs to plot
+sig_slopes_early <- df_node_slopes_roi %>% filter(feature == "degree" & term == "age" & significant == 1 & period == "early") %>% pull(region_of_interest)
+sig_slopes_aging <- df_node_slopes_roi %>% filter(feature == "degree" & term == "age" & significant == 1 & period == "aging") %>% pull(region_of_interest)
+sig_slopes <- intersect(sig_slopes_early, sig_slopes_aging)
+
+## Subset for frontal & hippocampal regions
+FrHip_ROIs <- df_system_hierarchy %>% 
+  filter(str_detect(system2, "Frontal|Hippocampal")) %>% 
+  pull(region_of_interest)
+sig_slopes_FrHip <- sig_slopes[sig_slopes %in% FrHip_ROIs]
+
+## Format data frame
+df_figS11 <- df_data_cortex %>% 
+  filter(study == "MRC" & feature == "degree") %>%
+  dplyr::select(subject, timepoint, age, region_of_interest, value) %>% 
+  filter(region_of_interest %in% sig_slopes_FrHip) %>% 
+  
+  # take summary statistics
+  group_by(region_of_interest, timepoint) %>% 
+  summarise( median = median(value, na.rm = TRUE),
+             age = median(age, na.rm = TRUE)
+  ) %>% 
+  
+  # add period to change colors
+  mutate(period = ifelse(timepoint %in% c(20, 35), "early", "aging")) %>% 
+  
+  # ad system-level info
+  left_join(df_system_hierarchy) %>% 
+  
+  # add slope value
+  left_join(df_node_slopes_roi %>% filter(feature == "degree" & term == "age" & significant == 1),
+            by = join_by(region_of_interest, period)
+  ) %>% 
+  
+  # add info for line color
+  mutate(
+    line_color = ifelse(timepoint == 35, NA_character_, system)
+  )
+```
+
+```{r figS11.plot}
+figS11 <- df_figS11 %>% 
+  
+  #mutate(t_value = ifelse(timepoint == 35, NA_real_, t_value)) %>% 
+  
+  ggplot() +
+  geom_line(aes(x = age - 1, y = median, color = line_color, group = region_of_interest)) +
+  geom_point(aes(x = age - 1, y = median, color = system),  size = 1.5) +
+  # geom_label_repel(aes(x = age, y = median, fill = I(color), label = label), size = 4, xlim = c(230, Inf), ylim = c(20, Inf),
+  #                 box.padding = 0.4, min.segment.length = 0.0, max.overlaps = 20
+  #                 ) +
+  coord_cartesian(clip = "off") +
+  scale_color_manual(values = system_colors, na.value = "gray") +
+  scale_x_continuous(breaks = c(0, 20, 35, 63, 230), limits = c(0, 250)) +
+  guides(color = guide_legend(title = NULL)) +
+  labs(y = "Strength (s)", x = "Age",
+       title = "S11. Significant fronto-hippocampal Δsdev & Δsage") +
+  theme(
+    # legend.position = c(0.15, 0.15),
+    # legend.direction = "horizontal",
+    # legend.key.width = unit(0.65, "cm"),
+    # legend.key.height = unit(0.1, "cm"),
+    plot.margin = margin(r = -12),
+    plot.title = element_text(size = 11)
+  )
+```
+
+```{r figS11.save, fig.width = 4.5, fig.height = 2.5, eval = FALSE}
+figS11
+map(
+  .x = c(".png", ".pdf"),
+  .f = ~ ggsave(paste0(supplement_figures_dir, "S11.significant_slope_curves", .x), width = 4.5, height = 2.5)
+)
+```
+
+## FIG S12 ##
+### Relationship between RMS effects and developmental slope (edge-level)
+
+```{r FigS12.prep}
+nperm <- 10000
+stress_dev_cor_perm_scaled <- tibble(
+  perm = "actual",
+  cor_dev = cor_dev,
+  cor_age = cor_age
+) %>% 
+  bind_rows(
+    df_stress_dev_cor_perm %>% 
+      mutate(perm = as.character(perm))
+  ) %>% 
+  
+  ## Calculate z-score in null distribution
+  mutate(scaled_cor_dev = scale(cor_dev)[,1]) %>% 
+  mutate(scaled_cor_age = scale(cor_age)[,1])
+
+## Extract z-scores & p-values for plot
+z_dev <- stress_dev_cor_perm_scaled %>% filter(perm == "actual") %>% pull(scaled_cor_dev)
+z_age <- stress_dev_cor_perm_scaled %>% filter(perm == "actual") %>% pull(scaled_cor_age)
+
+p_dev <- 1 - ((c(df_stress_dev_cor_perm %>% pull(cor_dev)) < cor_dev) %>% sum)/nperm
+p_age <- 1 - ((c(df_stress_dev_cor_perm %>% pull(cor_age)) > cor_age) %>% sum)/nperm
+
+## Add perm p-value to data frame for plotting
+df_figS12 <- df_edge_slopes_stress_system %>% 
+  mutate(
+    cor = ifelse(period == "early", cor_dev, cor_age),
+    p_perm = ifelse(period == "early", p_dev, p_age),
+    label = paste0(
+      "R = ", round(cor, 2), "\n",
+      "p_perm = ", round(p_perm, 2)
+    ),
+    period = ifelse(period == "early", "Early development", "Aging") %>% factor(levels = c("Early development", "Aging"))
+  )
+```
+
+```{r FigS12.plot}
+figS12 <- df_figS12 %>%
+  ggplot(aes(x = development_slope, y = RMS_effect_size)) +
+  geom_vline(xintercept = 0, color = "grey") +
+  geom_hline(yintercept = 0, color = "grey") +
+  geom_point(size = 0.5) +
+  geom_smooth(method = "lm", 
+              se = FALSE, 
+              color = "maroon", 
+              linewidth = 0.75) +
+  geom_text(aes(x = -Inf, y = Inf, label = label), 
+            vjust = 1,
+            hjust = 0,
+            color = "maroon", 
+            check_overlap = TRUE,
+            size = 3
+  ) +
+  facet_wrap(vars(period), scales = "free_x", nrow = 1) +
+  ylim(c(-3.5, 3.5)) +
+  labs(x = "Δw effect size", y = "RMS effect size",
+       title = "S12. RMS effect size vs Δw")
+```
+
+```{r FigS12.save, fig.height = 2, fig.width = 3.25}
+figS12
+map(
+  .x = c(".png", ".pdf"),
+  .f = ~ ggsave(paste0(supplement_figures_dir, "S12.edge_RMS_development_cor", .x), width = 3.25, height = 2)
+)
+```
+
+## FIG S13 ##
+### MTR development
+
+#### A | Cortical MTR through development by subject
+
+```{r FigS13a.prep}
+## Take the sum of cortical MTR for each subject at each timepoint
+df_figS13a <- df_data_cortex %>% 
+  filter(study == "MRC" & feature == "MTR") %>% 
+  group_by(subject, timepoint) %>%
+  summarise(value = sum(value, na.rm = TRUE),
+            age = median(age, na.rm = TRUE) 
+  ) %>%
+  filter(value > 0) %>% # remove outlier
+  mutate(age = ifelse(is.na(age), as.numeric(as.character(timepoint)), age))
+
+## Take the median cortical MTR at each timepoint to plot on top
+df_figS13a_median <- df_figS13a %>% 
+  group_by(timepoint) %>% 
+  summarise(value = median(value, na.rm = TRUE),
+            age = median(age, na.rm = TRUE)
+  )
+```
+
+```{r FigS13a.stats}
+figS13a_anova <- aov(value ~ timepoint, data = df_figS13a)
+summary(figS13a_anova)
+TukeyHSD(figS13a_anova) %>% 
+  .[[1]] %>% 
+  as.data.frame %>% 
+  rownames_to_column("term") %>% 
+  as_tibble() %>% 
+  clean_names %>% 
+  filter(p_adj < 0.05)
+```
+
+```{r FigS13a.plot}
+figS13a <- ggplot(mapping = aes(x = age, y = value, fill = value, color = value)) +
+  
+  # individual subjects
+  geom_line(data = df_figS13a, mapping = aes(group = subject),
+            linewidth = 0.25) +
+  geom_point(data = df_figS13a,
+             shape = 21, size = 1.25, color = "lightgray") +
+  
+  # median on top
+  geom_line(data = df_figS13a_median,
+            linewidth = 2*1.75, colour = "black")+
+  geom_line(data = df_figS13a_median,
+            linewidth = 2)+
+  geom_point(data = df_figS13a_median,
+             shape = 21, color = "black", size = 4, stroke = 1.25) +
+  
+  # plot aesthetics
+  scale_fill_viridis(guide = "none") +  
+  scale_color_viridis(guide = "none") +
+  scale_x_continuous(breaks = c(20, 35, 63, 230)) +
+  labs(y = "MTR", title = "A | Cortical MTR through development by subject")
+```
+
+```{r FigS13a.save, fig.height = 2.5, fig.width = 4.5}
+figS13a
+map(
+  .x = c(".png", ".pdf"),
+  .f = ~ ggsave(paste0(supplement_figures_dir, "S13a.development_MTR_by_subj", .x), width = 4.5, height = 2.5)
+)
+```
+
+#### B | Cortical MTR through development by region of interest
+
+```{r FigS13b.prep}
+## Take median MTR across cortical systems at each timepoint
+df_figS13b <- df_data_cortex %>% 
+  filter(study == "MRC" & feature == "MTR") %>% 
+  left_join(df_system_hierarchy) %>% 
+  group_by(system, timepoint) %>% 
+  summarise(value = median(value, na.rm = TRUE),
+            age = median(age, na.rm = TRUE) 
+  ) %>% 
+  mutate(system = str_remove(system, " region| cortex| formation")
+  )
+
+## Abbreviate system names (to save space on plot)
+system_order_abrv <- system_order %>% str_remove(" region| cortex| formation")
+system_colors_abrv <- system_colors
+names(system_colors_abrv) <- system_order_abrv
+```
+
+```{r FigS13b.stats}
+## Run ANOVA and Tukey on each cortical system across development
+df_figS13b_stats <- df_data_cortex %>% 
+  filter(study == "MRC" & feature == "MTR") %>% 
+  left_join(df_system_hierarchy) %>% 
+  group_by(system) %>% 
+  nest() %>% 
+  mutate(
+    anova = map(
+      .x = data,
+      .f = ~ aov(value ~ timepoint, data = .x)
+    ),
+    anova_pval = map(
+      .x = anova,
+      .f = ~ summary(.x)[[1]]$`Pr(>F)` %>% .[1]
+    ),
+    tukey_res = map(
+      .x = anova,
+      .f = ~ TukeyHSD(.x) %>% 
+        .[[1]] %>% 
+        as.data.frame %>% 
+        rownames_to_column("term") %>% 
+        as_tibble() %>% 
+        clean_names
+    )
+  ) %>% 
+  
+  # adjust anova p-values
+  unnest(cols = c(anova_pval)) %>% 
+  ungroup %>% 
+  mutate(anova_padj = p.adjust(anova_pval, method = "fdr"), .before = tukey_res) %>% 
+  arrange(anova_pval)
+
+## Check for significance
+df_figS13b_stats %>% 
+  filter(anova_padj < 0.05) %>% 
+  unnest(cols = c(tukey_res)) %>% 
+  filter(p_adj < 0.05) %>% # Motor cortex did not change
+  pivot_longer(cols = c(diff, p_adj), names_to = "stat", values_to = "value") %>% 
+  pivot_wider(id_cols = c(term, stat), names_from = system, values_from = value) %>% 
+  View()
+```
+
+```{r FigS13b.plot}
+figS13b <- df_figS13b %>%
+  ggplot(aes(x = age, y = value, fill = system, color = system)) +
+  geom_line(aes(group = system), linewidth = 0.5) +
+  geom_point(shape = 21, color = "black", size = 1.5) +
+  guides(color = guide_legend(title = NULL, nrow = 4),
+         fill = guide_legend(title = NULL, nrow = 4)) +
+  scale_x_continuous(breaks = c(20, 35, 63, 230)) +
+  scale_color_manual(values = system_colors_abrv) +
+  scale_fill_manual(values = system_colors_abrv) +
+  labs(y = "MTR", title = "B | Cortical MTR through development by system") +
+  theme(legend.position = "bottom",
+        legend.key.size = unit(0.05, "cm"),
+        legend.margin = margin(t = -10, l = -30),
+        legend.justification = "left"
+  )
+```
+
+```{r FigS13b.save, fig.height = 3, fig.width = 4.5}
+figS13b
+map(
+  .x = c(".png", ".pdf"),
+  .f = ~ ggsave(paste0(supplement_figures_dir, "S13b.development_MTR_by_system", .x), width = 4.5, height = 3)
+)
+```
+
+## GRAVEYARD ##
+
+### Correlation of slope value & effect size (for nodal strength only)
+
+```{r FigSXX.plot}
+figS12 <- df_node_slopes_roi %>%
+  filter(feature == "degree" & term == "age") %>% 
+  mutate(period = factor(period, levels = c("early", "aging"))) %>% 
+  
+  ggplot(aes(x = slope, y = t_value)) +
+  geom_point(aes(fill = t_value, size = abs(t_value)), shape = 21) +
+  geom_smooth(method = "lm", color = "black", se = FALSE, linewidth = 0.5) +
+  stat_cor(aes(label = after_stat(r.label))) +
+  geom_vline(xintercept = 0, lty = 2, color = "darkgrey") +
+  geom_hline(yintercept = 0, lty = 2, color = "darkgrey") +
+  facet_wrap(vars(period), scales = "free",
+             labeller = as_labeller(c("early" = "Early development", "aging" = "Aging"))
+  ) +
+  scale_fill_gradientn(colors = slope_effect_size_scale, guide = "none") +
+  scale_size_continuous(range = c(1, 3), guide = "none") +
+  labs(x = "Slope", y = "Slope effect size",
+       title = "S12. Relationship between slope & effect size"
+  )
+```
+
+```{r figSXX.save, eval = FALSE, fig.height = 2.34, fig.width = 5}
+figS12
+map(
+  .x = c(".png", ".pdf"),
+  .f = ~ ggsave(paste0(supplemental_figures_dir, "S12.degree_slope_effect_size_cor", .x), width = 6, height = 3)
+)
+```
+
+

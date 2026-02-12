@@ -1,0 +1,263 @@
+---
+title: "Figure 3: Topology of the normative rat network"
+author: "Rachel Smith"
+output: pdf_document
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(fig.width = 2.5, fig.height = 2, collapse = TRUE, warning = FALSE, message = FALSE, echo = FALSE)
+
+## Set paths and load data
+base_dir <- "~/Documents/PhD/projects/CamRat/CamRat/"
+source(paste0(base_dir, "code/03.data_analysis/setup.R"))
+figures_dir <- paste0(base_dir, "outputs/figures2.0/Fig3/")
+tables_dir <- paste0(base_dir, "outputs/tables/")
+analysis_objects_dir <- paste0(base_dir, "outputs/objects/") # to save analysis objects for figures
+
+## Load data objects for figures
+objects <- list.files(analysis_objects_dir)
+objects <- objects[!str_detect(objects, "null|archive")]
+for (obj in objects){
+  print(paste0("loading ", obj, "...."))
+  load(paste0(analysis_objects_dir, obj))
+}
+```
+
+### A | Anatomy of nodal strength
+
+```{r Fig3a.flatmap, fig.width = 1.5, fig.height = 2.25}
+## Rotate coordinates by 90 degrees (to plot upright)
+rotate_90 <- function(geometry) {
+  rotation_matrix <- matrix(c(0, 1, -1, 0), ncol = 2)  # 90-degree counterclockwise rotation
+  st_geometry(geometry) <- st_geometry(geometry) * rotation_matrix
+  return(geometry)
+}
+df_flatmap_rot <- rotate_90(df_flatmap)
+
+## Add system hierarchy and degree
+df_strength_flatmap <- df_flatmap_rot %>% 
+  left_join(df_normative_degree) %>% 
+  filter(!is.na(Swanson_name)) %>% 
+  filter(hemisphere == "Right")
+
+## Plot
+df_strength_flatmap %>% 
+    ggplot(mapping = aes(geometry = geometry)) +
+    geom_sf(aes(fill = median_degree, color = median_degree)) +
+    scale_fill_viridis(na.value = "white") +
+    scale_color_viridis(na.value = "gray",  guide = "none") +
+    labs(x = NULL, y = NULL, title = "A | Nodal strength (s)") +
+    theme(
+        legend.position = "none",
+        axis.line = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank()
+    )
+map(
+  .x = c(".png", ".pdf"),
+  .f = ~ ggsave(paste0(figures_dir, "A.nodal_strength_flatmap", .x), width = 1.5, height = 2.25)
+)
+```
+
+```{r Fig3a.anatomy, fig.width = 2.75, fig.height = 2}
+## Identify non-cortical ROIs
+na_rois <- df_whs_atlas %>% 
+  anti_join(df_normative_degree) %>% 
+  pull(region_of_interest) %>%
+  unique
+
+## Set layer order for brain plot based on normative strength
+anatomy_roi_order <- df_normative_degree %>% pull(region_of_interest)
+
+## Combine atlas and degree data for plotting
+df_strength_anatomy <- df_whs_atlas %>% 
+  
+  # select plane for plotting
+  filter(plane == "sagittal" & hemisphere == "right") %>% 
+  dplyr::select(-plane) %>% 
+  unnest(cols = c(value)) %>% 
+  
+  # add strength data
+  left_join(df_normative_degree) %>% 
+
+  # arrange ROIs for plot
+  mutate(region_of_interest = factor(region_of_interest, levels = c(na_rois, anatomy_roi_order)))
+
+## Label hubs
+df_strength_labs <- df_roi_centers %>% 
+  filter(region_of_interest %in% hubs & hemisphere == "right") %>% 
+  left_join(df_abbreviations)
+
+## Plot
+ggplot() +
+  geom_polygon(data = df_strength_anatomy,
+               mapping = aes(x = x, y = y, group = region_of_interest, fill = median_degree, color = median_degree), 
+               alpha = 0.95, lwd = 0.5) +
+  geom_text_repel(data = df_strength_labs,
+                  mapping = aes(x = y, y = z, label = abbreviation), 
+                  min.segment.length = 0, box.padding = 1, max.overlaps = 100, size = 3
+  ) +
+  scale_fill_viridis(na.value = "lightgray") +
+  scale_color_viridis(na.value = "lightgray", guide = "none") +
+  guides(fill = guide_colorbar(title = "Strength (s)", title.position = "top", title.hjust = 0.5)) +
+  theme_void() +
+  theme(legend.position = "top",
+        legend.key.height = unit(0.15, "cm"),
+        legend.key.width = unit(1, "cm"),
+        legend.text = element_text(size = 7),
+        legend.title = element_text(size = 8),
+        legend.margin = margin(b = -5),
+        strip.text = element_blank()
+  )
+map(
+  .x = c(".png", ".pdf"),
+  .f = ~ ggsave(paste0(figures_dir, "A.nodal_strength_anatomy", .x), width = 2.75, height = 2.0)
+)
+```
+
+### B | Strength distribution
+
+```{r Fig3b, fig.width = 2.25, fig.height = 2}
+df_normative_degree %>% 
+  ggplot(aes(x = median_degree)) +
+  #geom_histogram(binwidth = 3) +
+  geom_density() +
+  geom_point(aes(y = -0.05, fill = median_degree), size = 1.5, shape = 21, color = "gray",
+             position = position_jitter(height = 0.035)) +
+  geom_boxplot(aes(y = -0.05), width = 0.10, fill = "transparent", outlier.shape = NA) +
+  scale_fill_viridis(guide = "none") +
+  scale_x_continuous(limits = c(34, 46), breaks = seq(34, 46, by = 2)) +
+  labs(x = "Nodal strength", y = NULL,
+       title = "B | Strength distribution")
+map(
+  .x = c(".png", ".pdf"),
+  .f = ~ ggsave(paste0(figures_dir, "B.nodal_strength_distribution", .x), width = 2.25, height = 2.0)
+)
+```
+
+### C | Top 10 hubs
+
+```{r Fig3c, fig.height = 2, fig.width = 2.15}
+df_normative_degree %>% 
+  filter(region_of_interest %in% hubs) %>% 
+  left_join(df_abbreviations, by = join_by(region_of_interest)) %>% 
+
+  ggplot(aes(x = median_degree, y = reorder(abbreviation, median_degree))) +
+  geom_errorbar(aes(xmin = median_degree - sd_degree, xmax = median_degree + sd_degree)) +
+  geom_point(aes(fill = system), shape = 21, size = 2.75) +
+  scale_fill_manual(values = system_colors, guide = "none") +
+  #scale_fill_viridis(guide = "none") +
+  labs(x = "Strength (+/- sd)", y = NULL,
+       title = "C | Top 10 hubs") +
+  theme(axis.text.y = element_text(size = 9))
+map(
+  .x = c(".png", ".pdf"),
+  .f = ~ ggsave(paste0(figures_dir, "C.hubs", .x), width = 2.15, height = 2.0)
+)
+```
+
+### D | Rich club connectivity
+
+```{r Fig3d, fig.height = 1.85, fig.width = 2.75}
+## Generate brain atlas outline
+df_atlas_outline <- df_whs_atlas %>% 
+  filter(!str_detect(region_of_interest, "corticofugal")) %>% 
+  dplyr::select(-hemisphere, -region_of_interest) %>% 
+  unnest(cols = c(value)) %>% 
+  group_by(plane) %>% 
+  nest() %>% 
+  mutate(
+    hull = map(
+      .x = data,
+      .f = ~ concaveman(as.matrix(.x), concavity = 2.15) %>% 
+        as.data.frame %>% 
+        as_tibble() %>% 
+        dplyr::rename_all(~ c("x", "y"))
+    )
+  ) %>% 
+  dplyr::select(-data)
+
+## Define nodes
+df_nodes <- df_roi_centers %>% 
+    filter(region_of_interest %in% hubs & hemisphere == "right") %>% 
+    left_join(df_system_hierarchy, by = join_by(region_of_interest)) %>% 
+    left_join(enframe(system_colors, name = "system", value = "color"), by = join_by(system)) %>% 
+    dplyr::select(region_of_interest, color, y, z) %>% dplyr::rename("y" = "z", "x" = "y")
+
+## Define edges (rich club connectivity)
+df_edges <- df_normative_mind %>% 
+    
+    # filter for hubs
+    filter(R1 %in% hubs & R2 %in% hubs) %>% 
+
+    # add colors
+    #left_join(enframe(system_colors, name = "S1", value = "color"), by = join_by(S1)) %>% 
+    
+    # remove duplicates in reverse order
+    group_by(grp = paste0(pmin(R1, R2), sep = " - ", pmax(R1, R2))) %>% 
+    slice(1) %>% 
+    ungroup %>% dplyr::select(-grp) %>% 
+    
+    # add node position information
+    left_join(df_nodes, by = c("R1" = "region_of_interest")) %>% 
+    dplyr::rename_at(vars(x, y), ~ paste0(.x, 1)) %>% 
+    left_join(df_nodes, by = c("R2" = "region_of_interest")) %>% 
+    dplyr::rename_at(vars(x, y), ~ paste0(.x, 2)) %>% 
+    filter(R1 != R2)
+
+## Plot
+ggplot() +
+    
+    # brain outline
+    geom_polygon(data = df_atlas_outline %>% filter(plane == "sagittal") %>% unnest(cols = c(hull)),
+                 aes(x = x, y = y), alpha = 0.2,
+                 fill = "lightgray", color = "darkgrey"
+    ) +
+    
+    # network
+    geom_segment(data = df_edges %>% arrange(median_weight),
+                 mapping = aes(x = x1, xend = x2, y = y1, yend = y2, 
+                               color = median_weight, linewidth = median_weight, alpha = median_weight
+                 )
+    ) +
+    geom_point(data = df_nodes,
+               aes(x = x, y = y, fill = I(color)),
+               shape = 21, color = "black", size = 2.5
+    ) +
+    
+    # plot aesthetics
+    scale_color_viridis(limits = c(0.548, 0.982)) +
+    scale_linewidth_continuous(range = c(0.1, 1), limits = c(0.843, 0.982)) +
+    scale_linewidth_continuous(range = c(0, 2), limits = c(0.843, 0.982)) +
+    labs(x = NULL, y = NULL, title = "D | Rich club connectivity") +
+    theme(legend.position = "none",
+          axis.line = element_blank(),
+          axis.text = element_blank(),
+          axis.ticks = element_blank()
+          
+    )
+map(
+  .x = c(".png", ".pdf"),
+  .f = ~ ggsave(paste0(figures_dir, "D.rich_club_connectivity", .x), width = 2.75, height = 1.85)
+)
+```
+
+### E | Rich club coefficient
+
+```{r Fig3e.plot, fig.width = 1.90, fig.height = 2}
+df_rich_club_all %>% 
+    ggplot(aes(x = phi)) +
+    geom_density() +
+    geom_vline(data = df_rich_club_all %>% filter(network == "normative"),
+               mapping = aes(xintercept = phi, y = 0), color = "maroon", linewidth = 1
+    ) +
+    xlim(c(0.4, 1.0)) +
+    coord_cartesian(clip = "off") +
+    labs(x = expression(~phi), y = NULL,
+         title = "E | Rich club coefficient")
+map(
+  .x = c(".png", ".pdf"),
+  .f = ~ ggsave(paste0(figures_dir, "E.rich_club_coefficient", .x), width = 1.90, height = 2)
+)
+```
+

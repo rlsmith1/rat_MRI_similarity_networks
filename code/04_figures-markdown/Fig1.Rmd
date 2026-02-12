@@ -1,0 +1,103 @@
+---
+title: "Figure 1: Experimental design and analyzable data"
+author: "Rachel Smith"
+output: pdf_document
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(fig.width = 2.5, fig.height = 2, collapse = TRUE, warning = FALSE, message = FALSE, echo = FALSE)
+
+## Set paths and load data
+base_dir <- "~/Documents/PhD/projects/CamRat/CamRat/"
+source(paste0(base_dir, "code/03.data_analysis/setup.R"))
+figures_dir <- paste0(base_dir, "outputs/figures2.0/Fig1/")
+tables_dir <- paste0(base_dir, "outputs/tables/")
+```
+
+### A (bottom) | Subject-timepoint scans
+
+```{r Fig1b.prep}
+## Create dataframe
+df_fig1b <- df_data_cortex %>% 
+  filter(study == "MRC") %>% 
+  dplyr::select(subject, timepoint, age) %>% 
+  distinct()
+
+## Set subject order
+
+# identify number of scans per subject
+df_n_scans <- df_fig1b %>% 
+  count(subject, sort = TRUE) %>% 
+  dplyr::rename("n_scans" = "n")
+
+# Create df containing formation about the number of scans a subject has & at what timepoint/age it has those scans
+df_subject_scan_info <- df_fig1b %>% 
+  left_join(df_n_scans, by = join_by(subject)) %>% 
+  group_by(subject) %>% 
+  mutate(scan_no = row_number())
+
+# Write function to identify if scans was skipped
+f_skipped_scan <- function(subject_id, timepoint_pnd) {
+  if (df_subject_scan_info %>% filter(subject == subject_id & timepoint == timepoint_pnd) %>% nrow == 0) {skipped <- TRUE} else {skipped <- FALSE}
+  return(skipped)
+}
+
+# Identify any skipped scans
+df_skipped_scans <- tibble()
+for (subj in unique(df_subject_scan_info$subject)) {
+  
+  # Combine into df
+  df_tmp <- tibble(
+    subject = subj,
+    skip20 = f_skipped_scan(subj, 20),
+    skip35 = f_skipped_scan(subj, 35),
+    skip63 = f_skipped_scan(subj, 63),
+    skip300 = f_skipped_scan(subj, 300)
+  )
+  
+  # Combine across subjects
+  df_skipped_scans <- df_skipped_scans %>% bind_rows(df_tmp)
+  
+}
+  
+# Define order based on existence of scans at certain timepoints
+subject_order <- df_subject_scan_info %>% 
+  left_join(df_skipped_scans) %>% 
+  mutate(
+    group_order = case_when(
+      skip20 == FALSE & n_scans == 1 ~ "a",
+      skip20 == FALSE & n_scans == 2 ~ "b",
+      skip20 == FALSE & n_scans == 3 & skip300 == TRUE ~ "c",
+      skip20 == FALSE & n_scans == 3 & skip63 == TRUE ~ "d",
+      skip20 == FALSE & n_scans == 3 & skip35 == TRUE ~ "e",
+      skip20 == FALSE & n_scans == 4 ~ "f",
+      skip20 == TRUE & skip35 == FALSE ~ "g",
+      skip20 == TRUE & skip35 == TRUE ~ "h"
+    )
+  ) %>% 
+  arrange(group_order, age) %>% 
+  pull(subject) %>% 
+  unique
+```
+
+```{r Fig1b.plot}
+fig1b <- df_fig1b %>% 
+    mutate(subject = factor(subject, levels = subject_order)) %>% 
+    
+    ggplot(aes(x = age, y = subject)) +
+    geom_line(aes(group = subject), color = "#3CBB75") +
+    geom_point(color = "#3CBB75", size = 1) +
+    scale_x_continuous(breaks = c(20, 35, 63, 230)) +
+    labs(x = "Age (postnatal days)", y = "Subject", title = "Subject scans per timepoint") +
+    theme(axis.text.y = element_blank()#,
+          #plot.title = element_text(face = "Normal")
+    )
+```
+
+```{r fig1b.save, fig.height = 2.5, fig.width = 6.0, eval = FALSE}
+fig1b
+map(
+  .x = c(".png", ".pdf"),
+  .f = ~ ggsave(paste0(figures_dir, "B.subject_scans_by_timepoint", .x), width = 6.0, height = 2.5)
+)
+```

@@ -1,0 +1,17 @@
+# R specific files
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+.DS_Store
+
+# Data and large folders
+data/
+archive/
+registration_QC/
+
+# Analysis outputs
+outputs/objects/
+*.RDS
+*.Rdata
+*.nii.gz

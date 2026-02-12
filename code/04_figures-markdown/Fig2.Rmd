@@ -1,0 +1,164 @@
+---
+title: "Figure 2: Anatomy of the normative rat network"
+author: "Rachel Smith"
+output: pdf_document
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(fig.width = 2.5, fig.height = 2, collapse = TRUE, warning = FALSE, message = FALSE, echo = FALSE)
+
+## Set paths and load data
+base_dir <- "~/Documents/PhD/projects/CamRat/CamRat/"
+source(paste0(base_dir, "code/03.data_analysis/setup.R"))
+figures_dir <- paste0(base_dir, "outputs/figures2.0/Fig2/")
+tables_dir <- paste0(base_dir, "outputs/tables/")
+analysis_objects_dir <- paste0(base_dir, "outputs/objects/") # to save analysis objects for figures
+
+## Load data objects for figures
+objects <- list.files(analysis_objects_dir)
+objects <- objects[!str_detect(objects, "null|archive")]
+for (obj in objects){
+  print(paste0("loading ", obj, "...."))
+  load(paste0(analysis_objects_dir, obj))
+}
+```
+
+### A | Normative network with labels
+
+```{r Fig2a, fig.height = 5.0, fig.width = 6.5}
+df_normative_mind %>%  
+    mutate(R1 = factor(R1, levels = roi_order),
+           R2 = factor(R2, levels = roi_order)
+    ) %>% 
+    mutate(median_weight = ifelse(R1 == R2, NA, median_weight)) %>% #pull(R1) %>% unique
+    
+    # plot
+    ggplot(aes(x = R1, y = R2, fill = median_weight)) +
+    geom_tile() +
+    
+    # system lines
+    geom_hline(yintercept = system_lines, color = "white", linewidth = 0.25) +
+    geom_vline(xintercept = system_lines, color = "white", linewidth = 0.25) +
+    
+    # top bar annotation
+    annotate(xmin = c(0.5, system_lines),
+             xmax = c(system_lines, length(roi_order) + 0.5),
+             ymin = length(roi_order) + 1.25, ymax = length(roi_order) + 2.5,
+             geom = "rect",
+             fill = system_colors) +
+    
+    # plot aesthetics
+    scale_fill_viridis(option = "viridis", na.value = "white",
+                       guide = guide_colorbar(title = NULL)
+    ) +
+    scale_y_discrete(position = "right") +
+    coord_equal() +
+    labs(x = NULL, y = NULL, title = "A | Adult normative cortical microstructural network") +
+    theme(axis.text.x = element_blank(),
+          axis.text.y = element_text(size = 6.5),
+          axis.ticks = element_blank(),
+          axis.line = element_blank(), 
+          legend.position = "bottom",
+          legend.justification = "center",
+          legend.text = element_text(size = 7, margin = margin(t = 0)),
+          legend.key.width = unit(1.80, "cm"),
+          legend.key.height = unit(0.15, "cm"),
+          legend.margin = margin(t = -12)
+    )
+map(
+  .x = c(".png", ".pdf"),
+  .f = ~ ggsave(paste0(figures_dir, "A.normative_network_with_labels", .x), width = 6.5, height = 5.0)
+)
+```
+
+### B | Cortical system flatmap
+
+```{r Fig2b, fig.width = 3.25, fig.height = 3}
+## Rotate coordinates by 90 degrees (to plot upright)
+rotate_90 <- function(geometry) {
+  rotation_matrix <- matrix(c(0, 1, -1, 0), ncol = 2)  # 90-degree counterclockwise rotation
+  st_geometry(geometry) <- st_geometry(geometry) * rotation_matrix
+  return(geometry)
+}
+df_flatmap_rot <- rotate_90(df_flatmap)
+
+## Add system hierarchy
+df_system_flatmap <- df_flatmap_rot %>% 
+    filter(!is.na(Swanson_name)) %>%
+    left_join(df_system_hierarchy) %>% 
+    left_join(enframe(system_colors, name = "system", value = "fill")) %>% 
+    mutate(color = ifelse(is.na(region_of_interest), "gray", "black")) %>% 
+    arrange(-is.na(system))
+    
+## Plot
+df_system_flatmap %>% 
+    ggplot(mapping = aes(geometry = geometry)) +
+    geom_sf(aes(fill = I(fill), color = I(color))) +
+    labs(x = NULL, y = NULL, title = "B | Cortical system topography") +
+    theme(
+        axis.line = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank()
+    )
+map(
+  .x = c(".png", ".pdf"),
+  .f = ~ ggsave(paste0(figures_dir, "B.cortical_systems_flatmap", .x), width = 3.25, height = 3)
+)
+```
+
+### C | Cortical system anatomy
+
+```{r Fig2c, fig.width = 3.25, fig.height = 3}
+## Generate plots for each brain plane
+l_glass_brain_plots <- map(.x = c("sagittal", "coronal", "axial"), 
+    .f = ~ f_plot_glass_brain(system_order, 
+                              outline_width = 0.75,
+                              node_size = 1.5,
+                              edge_size = 0.5,
+                              plane_to_plot = .x)
+) %>% 
+  wrap_plots(ncol = 3)
+
+## Combine plot using patchwork
+layout <- c(
+  patchwork::area(t = 1, b = 90, l = 1, r = 125),
+  patchwork::area(t = 91, b = 180, l = 1, r = 90),
+  patchwork::area(t = 10, b = 190, l = 91, r = 180)
+)
+l_glass_brain_plots[[1]] + l_glass_brain_plots[[2]] + l_glass_brain_plots[[3]] +
+  plot_layout(design = layout) &
+  plot_annotation(title = "C | Cortical system anatomy") &
+  theme(plot.margin = margin(t = 0, r = 0, b = 7, l = 0))
+map(
+  .x = c(".png", ".pdf"),
+  .f = ~ ggsave(paste0(figures_dir, "C.cortical_systems_anatomy", .x), width = 3.25, height = 3)
+)
+```
+
+### LEGEND | panels B & C
+
+```{r Fig2_legend, fig.width = 6.5, fig.height = 0.75}
+legend_color_names <- str_remove(names(system_colors), " cortex| formation| region")
+legend_colors <- system_colors
+names(legend_colors) <- legend_color_names
+system_legend <- (
+    system_colors %>% 
+        enframe("system", "color") %>% 
+        mutate(system = str_remove(names(system_colors), " cortex| formation| region") %>% 
+                   factor(levels = str_remove(system_order, " cortex| formation| region") %>% rev)
+        ) %>% 
+        ggplot(aes(x = system, y = color)) +
+        geom_point(aes(fill = system), shape = 21) +
+        guides(fill = guide_legend(title = NULL, nrow = 3, override.aes = list(size = 4))) +
+        scale_fill_manual(values = legend_colors) +
+        theme(legend.margin = margin(t = 0, r = 0, b = 0, l = 0),
+              legend.justification = "center"
+        )
+) %>%
+    get_legend()
+as.ggplot(system_legend)
+map(
+  .x = c(".png", ".pdf"),
+  .f = ~ ggsave(paste0(figures_dir, "cortical_systems_legend", .x), width = 6.5, height = 0.75)
+)
+```

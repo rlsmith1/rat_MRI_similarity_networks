@@ -1,0 +1,527 @@
+---
+title: "Figure 5: Normative development"
+author: "Rachel Smith"
+output: pdf_document
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(fig.width = 2.5, fig.height = 2, collapse = TRUE, warning = FALSE, message = FALSE, echo = FALSE)
+
+## Set paths and load data
+base_dir <- "~/Documents/PhD/projects/CamRat/CamRat/"
+source(paste0(base_dir, "code/03.data_analysis/setup.R"))
+figures_dir <- paste0(base_dir, "outputs/figures2.0/Fig5/")
+tables_dir <- paste0(base_dir, "outputs/tables/")
+analysis_objects_dir <- paste0(base_dir, "outputs/objects/")
+
+## Load data objects figures
+objects <- list.files(analysis_objects_dir)
+objects <- objects[!str_detect(objects, "null|archive")]
+for (obj in objects){
+  print(paste0("loading ", obj, "...."))
+  load(paste0(analysis_objects_dir, obj))
+}
+```
+
+```{r plot.setup}
+## Identify max and min of slope effect size color scale based on maximum absolute slope
+degree_slope_scale_max <- df_node_slopes_roi %>% 
+  filter(feature == "degree" & term == "age") %>% 
+  pull(t_value) %>% 
+  abs %>% 
+  max %>% 
+  round(1)
+
+## Set edge color scale (to be consistent for Figs 3h and 3i)
+edge_slope_scale_max <- df_edge_slopes_system %>% 
+  filter(term == "age") %>% 
+  pull(t_value) %>% 
+  abs %>% 
+  max %>% 
+  round(1)
+```
+
+### A | Normative connectome heatmap through development
+
+```{r Fig5a.function}
+f_plot_heatmap <- function(df, pnd) {
+  
+  # create heatmap plot with bottom system colorbar annotations
+  p <- df %>%
+    filter(str_detect(subject, "JWD") & timepoint == pnd) %>% 
+    group_by(R1, R2, timepoint) %>% 
+    summarise(weight = median(weight)) %>% 
+    
+    mutate(R1 = factor(R1, levels = roi_order),
+           R2 = factor(R2, levels = roi_order),
+           timepoint = ifelse(timepoint == 300, 230, paste0(timepoint)),
+           timepoint = paste0("PND ", timepoint) %>% factor(levels = c("PND 20", "PND 35", "PND 63", "PND 230"))
+    ) %>%
+    
+    # plot
+    ggplot(aes(x = R1, y = R2, fill = weight)) +
+    geom_tile() +
+    
+    # add system annotations
+    # bottom
+    annotate(xmin = c(0.5, system_lines),
+             xmax = c(system_lines, length(roi_order) + 0.5),
+             ymin = -2.0, ymax = -0.5,
+             geom = "rect",
+             fill = system_colors) +
+    
+    # plot aesthetics
+    facet_wrap(vars(timepoint), nrow = 1) +
+    labs(x = NULL, y = NULL, title = NULL) +
+    scale_fill_viridis(na.value = "white", limits = c(0.25, 1.0)) +
+    guides(fill = guide_colourbar(title.position = "left", title.hjust = 0.5, title = "w")) +
+    theme(axis.text = element_blank(),
+          axis.ticks = element_blank(),
+          axis.line = element_blank(),
+          legend.position = "none",
+          plot.margin = margin(t = 0, r = 0, b = 0, l = 0)
+    )
+  
+    # add system annotations on the left (PND 20)
+  if (pnd == 20) {
+    p <- p +   
+      annotate(ymin = c(0, system_lines),
+               ymax = c(system_lines, length(roi_order) + 0.5),
+               xmin = -2.0, xmax = -0.5,
+               geom = "rect",
+               fill = system_colors
+      ) #+
+      # annotate(geom = "text", x = -2.5, y = system_annotations_noOB,
+      #          label = names(system_annotations_noOB), hjust = 1, vjust = 0.25, size = 3
+      # ) +
+      # coord_cartesian(clip = "off", xlim = c(-1, length(roi_order_noOB)))
+  }
+
+  # add legend on the top (PND 300 only)
+  if (pnd == 300) {
+    p <- p +
+      theme(
+        legend.position = "top",
+        legend.justification = "right",
+        legend.key.width = unit(0.5, "cm"),
+        legend.key.height = unit(0.125, "cm"),
+        legend.margin = margin(t = 0, r = 0, b = -15, l = 0)
+      )
+  }
+  
+  # return plot
+  return(p)
+}
+```
+
+```{r Fig5a.plot, fig.width = 4.875, fig.height = 1.65}
+## Identify timepoints to plot
+timepoints <- df_mind_cortex %>% arrange(timepoint) %>% pull(timepoint) %>% unique
+
+## Generate plots as a list
+l_fig5a <- map(timepoints, ~ f_plot_heatmap(df_mind_cortex, pnd = .x))
+
+## Patch together
+wrap_plots(l_fig5a, nrow = 1) +
+  plot_annotation(title = "A | Normative network at each timepoint") &
+  theme(plot.title = element_text(margin = margin(b = -5)))
+map(
+  .x = c(".png", ".pdf"),
+  .f = ~ ggsave(paste0(figures_dir, "A.normative_connectome_heatmap_by_timepoint", .x), width = 4.875, height = 1.65)
+)
+```
+
+
+### B | Normative strength distribution at each timepoint
+
+```{r Fig5b.prep}
+## Calculate median degree for each ROI at each timepoint
+df_degree_by_timepoint <- df_data_cortex %>% 
+  mutate(timepoint = ifelse(timepoint == 300, 230, as.character(timepoint)),
+         timepoint = factor(timepoint, levels = c(20, 35, 63, 230))
+         #timepoint = paste0("PND ", timepoint) %>% factor(levels = c("PND 20", "PND 35", "PND 63", "PND 230"))
+  ) %>% 
+  filter(study == "MRC" & feature == "degree") %>% 
+  group_by(timepoint, region_of_interest) %>% 
+  summarise(degree = median(value, na.rm = TRUE))
+
+## Calculate distribution statistics
+kruskal.test(degree ~ timepoint, data = df_degree_by_timepoint)
+dunn.test(df_degree_by_timepoint$degree, df_degree_by_timepoint$timepoint, method = "bh")
+```
+
+```{r Fig5b.plot, fig.width = 1.625, fig.height = 1.65}
+df_degree_by_timepoint %>%
+  group_by(timepoint) %>% 
+  #mutate(median_degree = median(degree)) %>% 
+  
+  ggplot(aes(x = timepoint, y = degree)) +
+  geom_point(alpha = 0.75, size = 0.3, position = position_jitter(width = 0.15)) +
+  geom_boxplot(#aes(color = median_strength, fill = median_strength),
+    color = "maroon", fill = "transparent",
+    width = 0.5, outlier.shape = NA) +
+  #scale_x_discrete(labels = c("PND 20", "PND 35", "PND 63", "PND 230")) +
+  #scale_color_viridis() +
+  #scale_fill_viridis() +
+  labs(x = "PND", y = "Strength (s)",
+       title = "B | Strength dist by PND")
+map(
+  .x = c(".png", ".pdf"),
+  .f = ~ ggsave(paste0(figures_dir, "B.degree_distribution_by_timepoint", .x), width = 1.625, height = 1.65)
+)
+```
+
+
+### C & D | Brainmaps of nodal slope effect sizes in early and late development
+
+```{r Fig5cd.volumetric.prep}
+## Identify non-cortical ROIs
+na_rois <- df_whs_atlas %>% 
+  anti_join(df_node_slopes_roi) %>% 
+  pull(region_of_interest) %>%
+  unique
+
+## Set layer order for brain plot based on normative strength
+fig5cd_roi_order <- df_node_slopes_roi %>% 
+  filter(feature == "degree" & term == "age") %>% 
+  group_by(region_of_interest) %>% 
+  slice_max(order_by = abs(t_value), n = 1) %>% 
+  arrange(abs(t_value)) %>% 
+  pull(region_of_interest) %>% 
+  unique
+
+## Combine atlas information with ROI weights based on nodal strength slopes
+df_fig5cd_volumetric <- df_whs_atlas %>% 
+  
+  # select plane for plotting
+  filter(plane == "sagittal" & hemisphere == "right") %>% 
+  dplyr::select(-plane) %>% 
+  unnest(cols = c(value)) %>% 
+  
+  # add degree data
+  expand_grid(period = c("early", "aging")) %>% 
+  left_join(df_node_slopes_roi %>% 
+              filter(feature == "degree" & term == "age") %>% 
+              ungroup %>% 
+              dplyr::select(region_of_interest, period, t_value, significant)
+  ) %>% 
+  mutate(period = factor(period, levels = c("early", "aging"))) %>% 
+  
+  # arrange ROIs for plot
+  mutate(region_of_interest = factor(region_of_interest, levels = c(na_rois, fig5cd_roi_order)))
+```
+
+```{r Fig5cd.volumetric.plot}
+fig5cd_volumetric <- df_fig5cd_volumetric %>% 
+  ggplot() +
+  geom_polygon(aes(x = x, y = y, group = interaction(region_of_interest, period), fill = t_value), #color = significant), 
+               alpha = 1, lwd = 0.25) +
+  facet_wrap(vars(period), nrow = 2,
+             labeller = as_labeller(c("early" = "C | Early life strength changes Δsdev", "aging" = "D | Age-related strength changes Δsage"))
+  ) +
+  scale_fill_gradientn(colors = slope_effect_size_scale, limits = c(-degree_slope_scale_max, degree_slope_scale_max), na.value = "lightgray") +
+  #scale_color_manual(values = c("1" = "black", "0" = "transparent"), na.value = "transparent", guide = "none") +
+  #guides(fill = guide_colorbar(title = "Δk", title.position = "top", title.hjust = 0.5)) +
+  #labs(title = "E | Anatomy of developmental degree slopes") +
+  theme_void() +
+  theme(#plot.title = element_text(face = "bold", size = 12),
+        strip.text = element_text(size = 11, face = "bold"),
+        strip.clip = "off",
+        legend.position = "none",
+        # legend.title = element_text(size = 9),
+        # legend.text = element_text(size = 8),
+        # legend.position = "bottom",
+        # legend.justification = "center",
+        # legend.key.width = unit(1.5, "cm"),
+        # legend.key.height = unit(0.1, "cm"),
+        plot.margin = margin(l = 5)
+  )
+```
+
+```{r fig5cd.flatmap.prep}
+## Rotate coordinates by 180 degrees (want the 'front' facing right to align more with anatomic plots)
+rotate_180 <- function(geometry) {
+  rotation_matrix <- matrix(c(-1, 0, 0, -1), ncol = 2)  # 180-degree counterclockwise rotation
+  st_geometry(geometry) <- st_geometry(geometry) * rotation_matrix
+  return(geometry)
+}
+df_flatmap_rot <- rotate_180(df_flatmap)
+
+## Add developmental slopes
+df_fig5cd_flatmap <- df_flatmap_rot %>% 
+  left_join(df_node_slopes_roi %>% 
+              filter(feature == "degree" & term == "age") %>% 
+              ungroup %>% 
+              dplyr::select(region_of_interest, period, t_value, significant),
+            by = join_by(region_of_interest)
+  ) %>% 
+  filter(!is.na(Swanson_name)) %>% 
+  
+  # filter for early life slope in left hemisphere, and aging slope in right
+  dplyr::filter(
+    (period == "early" & hemisphere == "Left") | 
+      (period == "aging" & hemisphere == "Right") |
+      is.na(region_of_interest)
+  )
+```
+
+```{r fig5cd.flatmap.plot}
+fig5cd_flatmap <- df_fig5cd_flatmap %>% 
+  ggplot(mapping = aes(geometry = geometry)) +
+  geom_sf(aes(fill = t_value, color = t_value)) +
+  scale_fill_gradientn(colors = slope_effect_size_scale, 
+                       limits = c(-degree_slope_scale_max, degree_slope_scale_max), 
+                       na.value = "white") +
+  scale_color_gradientn(colors = slope_effect_size_scale, 
+                        limits = c(-degree_slope_scale_max, degree_slope_scale_max), 
+                        na.value = "gray",
+                        guide = "none") +
+  guides(fill = guide_colorbar(title = "Δk", title.position = "top", title.hjust = 0.5)) +
+  
+  labs(x = NULL, y = NULL, title = NULL) +
+  theme(
+    legend.position = c(0.5, 1.0),
+    legend.direction = "horizontal",
+    legend.justification = "center",
+    #legend.title = element_text(angle = 90),
+    legend.key.width = unit(0.5, "cm"),
+    legend.key.height = unit(0.2, "cm"),
+    legend.margin = margin(l = -20),
+    axis.line = element_blank(),
+    axis.text = element_blank(),
+    axis.ticks = element_blank()
+  )
+```
+
+```{r Fig5cd.save, fig.width = 4.875, fig.height = 3, eval = FALSE}
+layout <- c(
+  patchwork::area(t = 1, b = 180, l = 1, r = 90),
+  patchwork::area(t = 1, b = 180, l = 91, r = 180)
+)
+fig5cd_volumetric + 
+  fig5cd_flatmap +
+  plot_layout(design = layout)
+map(
+  .x = c(".png", ".pdf"),
+  .f = ~ ggsave(paste0(figures_dir, "CD.strength_slope_brainmaps", .x), width = 4.875, height = 3)
+)
+```
+
+### E | Correlation of nodal slope effect sizes in early and late development
+
+```{r Fig5e.prep}
+## Add system level information
+df_fig5e <- df_node_slopes_roi %>% 
+  left_join(df_system_hierarchy) %>% 
+  filter(feature == "degree" & term == "age") %>% 
+  pivot_wider(id_cols = c(system, region_of_interest), names_from = period, values_from = t_value)
+
+## Calculate correation
+cor.test(df_fig5e$early, df_fig5e$aging, method = "pearson")
+```
+
+```{r Fig5e.plot}
+df_fig5e %>% 
+  ggplot(aes(x = early, y = aging)) +
+  geom_vline(xintercept = 0, lty = 2, color = "darkgrey") +
+  geom_hline(yintercept = 0, lty = 2, color = "darkgrey") +
+  geom_point(size = 0.5) +
+  geom_smooth(method = "lm", color = "maroon", linewidth = 0.5, se = FALSE) +
+  stat_cor(color = "maroon", label.sep = "\n", size = 3.5, label.y.npc = "bottom", vjust = 0) +
+  labs(x = "Δsdev", y = "Δsage",
+       title = "E | Δs correlation"
+  ) +
+  theme(plot.margin = margin(r = 6))
+map(
+  .x = c(".png", ".pdf"),
+  .f = ~ ggsave(paste0(figures_dir, "E.strength_slope_correlation", .x), width = small_fig_width, height = small_fig_height)
+)
+```
+
+
+### F | Correlation of edge weight slope effect sizes in early and late development
+
+```{r Fig5f.prep}
+## Format tibble for plotting
+df_fig5f <- df_edge_slopes_system %>% 
+  filter(term == "age") %>% 
+  pivot_wider(id_cols = system_edge, names_from = period, values_from = t_value)
+
+## Calculate correlation
+cor.test(df_fig5f$early, df_fig5f$aging, method = "pearson")
+```
+
+```{r Fig5f.plot}
+df_fig5f %>% 
+  ggplot(aes(x = early, y = aging)) +
+  geom_vline(xintercept = 0, lty = 2, color = "darkgrey") +
+  geom_hline(yintercept = 0, lty = 2, color = "darkgrey") +
+  geom_point(size = 0.5) +
+  geom_smooth(method = "lm", color = "maroon", linewidth = 0.5, se = FALSE) +
+  stat_cor(color = "maroon", label.sep = "\n", size = 3.5, label.y.npc = "bottom", vjust = 0) +
+  labs(x = "Δw_dev", y = "Δw_age",
+       title = "F | Δw correlation"
+  ) +
+  theme(plot.margin = margin(r = 6))
+map(
+  .x = c(".png", ".pdf"),
+  .f = ~ ggsave(paste0(figures_dir, "F.edge_slope_correlation", .x), width = small_fig_width, height = small_fig_height)
+)
+```
+
+
+### G | Circle plots of edge slope effect sizes in early development
+
+```{r Fig5gh.prep}
+## Write function to abbreviate names
+f_abbreviate_names <- function(names) {
+  names %>% 
+    str_remove(" region| cortex| formation") %>%
+    str_wrap(15) %>% 
+    str_replace("frontal", "-\nfrontal") %>%
+    str_replace("sensory", "-\nsensory") %>%
+    str_replace("splenial", "-\nsplenial") %>%
+    str_replace("campal", "-\ncampal")
+}
+
+## Abbreviate system names (to save space on plot)
+system_order_abrv <- f_abbreviate_names(system_order)
+system_colors_abrv <- system_colors
+names(system_colors_abrv) <- system_order_abrv
+```
+
+```{r Fig5g.prep}
+## Create dataframe to generate graph
+df_fig5g_graph <- df_edge_slopes_system %>% 
+  
+  # filter for period & term of interest
+  filter(period == "early" & term == "age") %>% 
+  ungroup %>% 
+  
+  # separate edge into constituent systems
+  separate(system_edge, into = c("S1", "S2"), sep = " - ") %>% 
+  dplyr::select(S1, S2, t_value) %>% 
+  
+  # edit node names (to save space)
+  mutate_at(vars(c(S1, S2)), ~ f_abbreviate_names(.x)) %>% 
+  
+  # filter for desired effect size
+  filter(abs(t_value) > 3.3) %>% 
+  
+  # order for plotting
+  arrange(abs(t_value))
+
+## Create graph
+fig5g_graph <- graph_from_data_frame(df_fig5g_graph)
+
+## Order the nodes (for consistency across plots & with the matrix)
+fig5g_graph <- permute(fig5g_graph, match(V(fig5g_graph)$name, system_order_abrv))
+V(fig5g_graph)$node_label <- names(V(fig5g_graph))
+```
+
+```{r Fig5g.plot, fig.height = 4}
+ggraph(fig5g_graph, layout = 'linear', circular = TRUE) + 
+  geom_edge_arc(aes(color = t_value, width = abs(t_value))) + 
+  geom_edge_loop(aes(color = t_value, width = abs(t_value))) + 
+  geom_node_text(aes(label = name, angle = node_angle(x, y)), size = 2.5, hjust = "outward") +
+  geom_node_point(shape = 21, size = 4, aes(fill = name)) +
+  theme_graph() +
+  scale_edge_color_gradientn(colors = slope_effect_size_scale, name = "slope", 
+                             limits = c(-edge_slope_scale_max, edge_slope_scale_max)
+  ) +
+  scale_fill_manual(values = system_colors_abrv, guide = "none") +
+  scale_edge_width_continuous(range = c(0.1, 2), guide = "none") +
+  coord_fixed(xlim = c(-1.75, 1.75), ylim = c(-1.75, 1.75), clip = "off") +
+  #labs(title = "H | Early development edge slope") +
+  guides(fill = guide_none()) +
+  theme_graph() +
+  theme(plot.title = element_text(size = 11),
+        legend.position = "none")
+map(
+  .x = c(".png", ".pdf"),
+  .f = ~ ggsave(paste0(figures_dir, "G.edge_slope_early_circleplot", .x), width = 3.5, height = 4)
+)
+```
+
+
+### H | Circle plots of edge slope effect sizes in late development
+
+```{r Fig5h.prep}
+## Create dataframe to generate graph
+df_fig5h_graph <- df_edge_slopes_system %>% 
+  
+  # filter for period & term of interest
+  filter(period == "aging" & term == "age") %>% 
+  ungroup %>% 
+  
+  # separate edge into constituent systems
+  separate(system_edge, into = c("S1", "S2"), sep = " - ") %>% 
+  dplyr::select(S1, S2, t_value) %>% 
+  
+  # edit node names (to save space)
+  mutate_at(vars(c(S1, S2)), ~ f_abbreviate_names(.x)) %>% 
+  
+  # filter for desired effect size
+  filter(abs(t_value) > 3.3) %>% 
+  
+  # order for plotting
+  arrange(abs(t_value))
+
+## Create graph
+fig5h_graph <- graph_from_data_frame(df_fig5h_graph)
+
+## Order the nodes (for consistency across plots & with the matrix)
+fig5h_graph <- permute(fig5h_graph, match(V(fig5h_graph)$name, system_order_abrv))
+V(fig5h_graph)$node_label <- names(V(fig5h_graph))
+```
+
+```{r Fig5h.plot, fig.height = 4}
+ggraph(fig5h_graph, layout = 'linear', circular = TRUE) + 
+  geom_edge_arc(aes(color = t_value, width = abs(t_value))) + 
+  geom_edge_loop(aes(color = t_value, width = abs(t_value))) + 
+  geom_node_text(aes(label = name, angle = node_angle(x, y)), size = 2.5, hjust = "outward") +
+  geom_node_point(shape = 21, size = 4, aes(fill = name)) +
+  theme_graph() +
+  scale_edge_color_gradientn(colors = slope_effect_size_scale, guide = "none",
+                             limits = c(-edge_slope_scale_max, edge_slope_scale_max)
+  ) +
+  scale_fill_manual(values = system_colors_abrv) +
+  scale_edge_width_continuous(range = c(0.1, 2), guide = "none") +
+  coord_fixed(xlim = c(-1.75, 1.75), ylim = c(-1.75, 1.75)) +
+  #labs(title = "I | Aging edge slope") +
+  guides(fill = guide_none(), color = guide_none()) +
+  theme(
+    plot.title = element_text(size = 11)
+  )
+map(
+  .x = c(".png", ".pdf"),
+  .f = ~ ggsave(paste0(figures_dir, "H.edge_slope_aging_circleplot", .x), width = 3.5, height = 4)
+)
+```
+
+
+### Generate legend for panels G & H
+
+```{r Fig5fg.legend, fig.width= 4.875, fig.height = 0.5}
+circleplot_legend <- (
+  df_fig5g_graph %>% 
+    ggplot(aes(x = paste0(S1, S2), y = t_value)) +
+    geom_point(aes(color = t_value)) +
+    guides(colour = guide_colorbar(title = "Δw", title.hjust = 0.5, title.position = "top")) +
+    scale_color_gradientn(colors = slope_effect_size_scale, limits = c(-edge_slope_scale_max, edge_slope_scale_max)) +
+    theme(legend.margin = margin(t = 0, r = 0, b = 0, l = 0),
+          legend.text = element_text(size = 7),
+          legend.title = element_text(size = 8),
+          legend.direction = "horizontal",
+          legend.key.height = unit(0.1, "cm"),
+          legend.key.width = unit(2, "cm")
+    )
+) %>% 
+  get_legend()
+as.ggplot(circleplot_legend)
+map(
+  .x = c(".png", ".pdf"),
+  .f = ~ ggsave(paste0(figures_dir, "GH.legend", .x), width = 4.875, height = 0.5)
+)
+```
+

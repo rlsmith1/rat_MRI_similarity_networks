@@ -1,0 +1,276 @@
+---
+title: "Figure 4: Validation of the normative rat network against other neurobiological properties"
+author: "Rachel Smith"
+output: pdf_document
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(fig.width = 2.5, fig.height = 2, collapse = TRUE, warning = FALSE, message = FALSE, echo = FALSE)
+
+## Set paths and load data
+base_dir <- "~/Documents/PhD/projects/CamRat/CamRat/"
+source(paste0(base_dir, "code/03.data_analysis/setup.R"))
+figures_dir <- paste0(base_dir, "outputs/figures2.0/Fig4/")
+tables_dir <- paste0(base_dir, "outputs/tables/")
+analysis_objects_dir <- paste0(base_dir, "outputs/objects/") # to save analysis objects for figures
+
+## Load data objects for figures
+objects <- list.files(analysis_objects_dir)
+objects <- objects[!str_detect(objects, "null|archive")]
+for (obj in objects){
+  print(paste0("loading ", obj, "...."))
+  load(paste0(analysis_objects_dir, obj))
+}
+
+## Write function to calculate the Pearson and Spearman correlations of two vectors, as well as the respective P values
+f_calc_pearson_spearman <- function(vec1, vec2) {
+    
+    ## Calculate the Pearson correlation
+    pearson_res <- cor.test(vec1, vec2, method = "pearson")
+    pearson_cor <- pearson_res$estimate
+    pearson_tstat <- pearson_res$statistic
+    pearson_df <- pearson_res$parameter
+    pearson_pvalue <- 2 * pt(abs(pearson_tstat), df = pearson_df, lower.tail = FALSE)
+    
+    ## Calculate the Spearman correlation
+    spearman_res <- cor.test(vec1, vec2, method = "spearman")
+    spearman_cor <- spearman_res$estimate
+    n <- length(vec1)
+    spearman_df <- n - 2
+    #spearman_sstat <- spearman_res$statistic
+    spearman_tstat <- spearman_cor * sqrt(spearman_df / (1 - spearman_cor^2))
+    spearman_pvalue <- 2 * pt(abs(spearman_tstat), df = spearman_df, lower.tail = FALSE)
+
+    ## Return results as a tibble
+    res <- tibble(
+        test = c("Pearson", "Spearman"),
+        correlation = c(pearson_cor, spearman_cor),
+        t_stat = c(pearson_tstat, spearman_tstat),
+        p_value = c(pearson_pvalue, spearman_pvalue)
+    )
+    return(res)
+}
+
+```
+
+
+### A | Edge-distance relationship
+
+```{r Fig4a, fig.width = 2.15, fig.height = 2}
+## Pearson & Spearman correlation (plot Pearson)
+f_calc_pearson_spearman(df_normative_mind_distance$median_weight, df_normative_mind_distance$distance)
+
+## Plot
+df_normative_mind_distance %>% 
+    ggplot(aes(x = distance, y = median_weight)) +
+    geom_point(size = 0.3) +
+    geom_smooth(method = "lm", color = "maroon", linewidth = 0.5) +
+    stat_cor(aes(label = ..r.label..), color = "maroon", label.x.npc = 0.62) +
+    scale_fill_viridis() +
+    coord_cartesian(clip = "off") +
+    labs(x = "Distance between nodes", y = "Edge weight (w)",
+         title = "A | Distance by weight"
+         #title = "Linear relationship between normative MIND edge weight and distance"
+    ) +
+    theme(
+        legend.position = "none"
+    )
+
+## Save
+map(
+  .x = c(".png", ".pdf"),
+  .f = ~ ggsave(paste0(figures_dir, "A.edge_distance", .x), width = 2.15, height = 2)
+)
+```
+
+### B | Anatomy of cortical types
+
+```{r Fig4b, fig.width = 2.15, fig.height = 2.0}
+## Load cortical type assignments (Zilles --> WHS)
+data_dir <- paste0(base_dir, "data/WHS_analysis/")
+df_cortical_type_all <- read_xlsx(paste0(data_dir, "GarciaCabeza2023_all_cortical_types_RLS.xlsx")) %>% 
+  clean_names
+
+## Assign colors
+cortical_type_colors <- c(
+    "eulaminate" = "#5050FFFF",
+    "agranular" = "#CE3D32FF",
+    "dysgranular" = "#749B58FF",
+    "archicortex" = "#F0E685FF",
+    "paleocortex" = "#D595A7FF",
+    
+    "isocortex" = "#E69F00",
+    "mesocortex" = "#009E73",
+    "allocortex" = "#9966FF"
+)
+
+## Rotate coordinates by 90 degrees (to plot upright)
+rotate_180 <- function(geometry) {
+  rotation_matrix <- matrix(c(-1, 0, 0, -1), ncol = 2)  # 180-degree counterclockwise rotation
+  st_geometry(geometry) <- st_geometry(geometry) * rotation_matrix
+  return(geometry)
+}
+df_flatmap_rot <- rotate_180(df_flatmap)
+
+## Add system hierarchy
+df_cortical_type_flatmap <- df_flatmap_rot %>% 
+    filter(!is.na(Swanson_name)) %>%
+    left_join(df_cortical_type_all, by = join_by("region_of_interest" == "whs")) %>% 
+    mutate(color = ifelse(is.na(region_of_interest), "gray", "black")) %>% 
+    mutate(cortex = ifelse(!is.na(cortex), paste0(cortex, "cortex"), cortex)) %>% 
+    mutate(fill = ifelse(hemisphere == "Right", cortical_type, cortex)) %>% 
+    mutate(fill = factor(fill, levels = names(cortical_type_colors)))
+
+## Plot
+df_cortical_type_flatmap %>% 
+    filter(hemisphere == "Left") %>% # Plot only cortex type
+    
+    ggplot(mapping = aes(geometry = geometry)) +
+    geom_sf(aes(fill = fill, color = I(color))) +
+    scale_fill_manual(values = cortical_type_colors, 
+                      na.value = "white", guide = guide_legend(title = NULL, nrow = 2)) +
+    labs(x = NULL, y = NULL, title = "B | Cortical type topography") +
+    theme(
+        legend.position = "bottom",
+        legend.justification = "center",
+        legend.key.size = unit(0.25, "cm"),
+        legend.margin = margin(t = -20),
+        axis.line = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank()
+    )
+map(
+  .x = c(".png", ".pdf"),
+  .f = ~ ggsave(paste0(figures_dir, "B.cortical_type_topography", .x), width = 2.15, height = 2.0)
+)
+```
+
+### C | Cortical type: Intra-class edge proportion across network density thresholds
+
+```{r Fig4c, fig.width = 2.15, fig.height = 2}
+df_intraclass_overlap <- df_intraclass_overlap %>% mutate(color = ifelse(color != "gray", "maroon", color))
+ggplot(mapping = aes(x = density, y = percent_edge*100)) +
+  #geom_point(aes(fill = I(color)), shape = 21) +
+  geom_line(data = df_intraclass_overlap %>% filter(network == "normative MIND"), linewidth = 0.75,
+            mapping = aes(group = network, color = I(color))
+  ) +
+  geom_smooth(data = df_intraclass_overlap %>% filter(network != "normative MIND"),
+              mapping = aes(color = I(color)), se = TRUE
+  ) +
+  annotate(geom = "text", label = "Normative network", color = "maroon", x = 0.06, y = 100, size = 3.5) +
+  annotate(geom = "text", label = "10000 null nets", color = "#595959", x = 0.06, y = 25, size = 3.5) +
+  
+  scale_x_continuous(breaks = c(0, 0.05, 0.1)) +
+  ylim(c(0, 100)) +
+  coord_cartesian(clip = "off") +
+  labs(x = "Network density", y = "Intra-class edge %",
+       title = "C | Intra-class similarity")
+map(
+  .x = c(".png", ".pdf"),
+  .f = ~ ggsave(paste0(figures_dir, "C.intraclass_similarity", .x), width = 2.15, height = 2)
+)
+```
+
+### D | Tract-tracing jaccard vs MIND edge weight
+
+```{r Fig4d.cor, fig.height = 2.0, fig.width = 2.15}
+## Pearson & Spearman correlation (plot Spearman)
+f_calc_pearson_spearman(df_jaccard_mind$mind_weight, df_jaccard_mind$jaccard)
+
+## Plot
+df_jaccard_mind %>% 
+  ggplot(aes(x = jaccard, y = mind_weight)) +
+  geom_point(size = 0.25) +
+  geom_smooth(method = "lm", color = "maroon", linewidth = 0.5) +
+  stat_cor(method = "spearman", cor.coef.name = "rho", p.digits = NA, label.y = 0.625, label.x = 0.5,
+           label.sep = "\n", hjust = 0, size = 3.5, color = "maroon") +
+  coord_cartesian(clip = "off") +
+  labs(x = "Tract-tracing Jaccard index", y = "Edge weight (w)",
+       title = "D | Tract-tracing similarity") +
+  theme(
+    legend.position = "none"
+  )
+
+## Save
+map(
+  .x = c(".png", ".pdf"),
+  .f = ~ ggsave(paste0(figures_dir, "D.tracttracing_jaccard_mind_cor", .x), width = 2.15, height = 2.0)
+)
+```
+
+### E | Side-by-side comparison of network heatmaps
+
+```{r Fi4e, fig.height = 2.0, fig.width = 2.2}
+# Format tibble to plot
+df_norm_exp_plot <- df_norm_exp_mind %>% 
+    mutate(
+        R1 = factor(R1, levels = roi_order),
+        R2 = factor(R2, levels = roi_order)
+    ) %>%
+    mutate(
+        x_num = as.numeric(R1),
+        y_num = as.numeric(R2),
+        triangle = ifelse( x_num >= y_num, "lower", "upper")
+    ) %>% 
+    pivot_longer(c(norm_weight, exp_weight), names_to = "network", values_to = "value") %>%
+    filter( (triangle == "upper" & str_detect(network, "exp")) | (triangle == "lower" & str_detect(network, "norm")) )
+
+# Plot
+df_norm_exp_plot %>% 
+    ggplot(aes(x = R1, y = R2)) +
+    geom_tile(aes(fill = value)) +
+    geom_abline(color = "black") +
+    
+    # bottom bar annotation
+    annotate(xmin = c(0.5, system_lines),
+             xmax = c(system_lines, length(roi_order) + 0.5),
+             ymin = -1.25, ymax = 0,
+             geom = "rect",
+             fill = system_colors) +
+
+    # plot aesthetics
+    scale_fill_viridis(guide = guide_colorbar(title = NULL)) +
+    coord_equal() +
+    labs(x = "Control PND63 (N=19)", y = "Normative PND63 (N=41)", 
+         title = "E | Cohort comparison") +
+    theme(
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        axis.title.x = element_text(vjust = 67),
+        axis.title.y = element_text(vjust = 66, angle = 270),
+        legend.position = "left",
+        legend.margin = margin(r = -30),
+        legend.text = element_text(margin = margin(l = 2)),
+        legend.key.height = unit(0.75, "cm"),
+        legend.key.width = unit(0.15, "cm"),
+        plot.margin = margin(b = -10, r = 10),
+        axis.line = element_blank()
+    )
+map(
+  .x = c(".png", ".pdf"),
+  .f = ~ ggsave(paste0(figures_dir, "E.normative_control_heatmaps", .x), width = 2.2, height = 2.0)
+)
+```
+
+### F | Scatterplot correlation of edge weights & edge weight distributions
+
+```{r Fig4f, fig.height = 2.0, fig.width = 2.15}
+## Pearson & Spearman correlation (plot Pearson)
+f_calc_pearson_spearman(df_norm_exp_mind$norm_weight, df_norm_exp_mind$exp_weight)
+
+## Plot
+df_norm_exp_mind %>% 
+  ggplot(aes(x = norm_weight, y = exp_weight)) +
+  geom_point(size = 0.25) +
+  geom_smooth(method = "lm", color = "maroon", linewidth = 0.5, se = FALSE) +
+  stat_cor(aes(label = ..r.label..), vjust = 1, color = "maroon", size = 3.5) +
+  labs(x = "Normative PND63 (N=41)", y = "Control PND63 (N=19)",
+       title = "F | Edge weight correlation")
+
+## Save
+map(
+  .x = c(".png", ".pdf"),
+  .f = ~ ggsave(paste0(figures_dir, "F.edge_weight_cor", .x), width = 2.15, height = 2.0)
+)
+```
+
