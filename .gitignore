@@ -11,7 +11,5 @@ archive/
 registration_QC/
 
 # Analysis outputs
-outputs/objects/
-*.RDS
-*.Rdata
-*.nii.gz
+outputs/objects/*
+!outputs/objects/README.md
