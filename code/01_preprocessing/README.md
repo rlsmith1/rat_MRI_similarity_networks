@@ -1,7 +1,7 @@
 ##########################################################################
 
 ## Code to preprocess rat structural MRI data using AFNI software tools ##
-## Smith et al Net Neuro 2026					                    	##
+## Smith et al Net Neuro 2026					        ##
 
 ##########################################################################
 
@@ -58,3 +58,4 @@ create-scan-table.R
  - Repeat this process until all scans have been successfully registered (may take a few rounds of QC)
 
 
+**NOTE:** All registrations quality control images and parameters for the scans included in this study are in registration_QC/

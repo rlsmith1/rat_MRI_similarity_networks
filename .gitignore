@@ -8,7 +8,7 @@
 # Data and large folders
 data/
 archive/
-registration_QC/
+code/notebooks/
 
 # Analysis outputs
 outputs/objects/*
