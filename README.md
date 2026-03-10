@@ -1,7 +1,7 @@
 # Cortical similarity networks in the rat brain: Postnatal development and sensitivity to early life stress
 ### Author: Rachel L Smith
 
-This repository contains the code used to run data preprocessing and analysis and generate figures for R.L. Smith et al., *Net Neuro* (2026).
+This repository contains the code used to run data preprocessing and analysis and generate figures for [R.L. Smith et al., *Net Neuro* (2026)](https://direct.mit.edu/netn/article/doi/10.1162/NETN.a.546/134914/Cortical-similarity-networks-in-the-rat-brain).
 
 Individual scripts are commented to describe their specific purpose. All functions can be found in functions/ and are loaded in code/03_data-analysis/setup.R.
 
